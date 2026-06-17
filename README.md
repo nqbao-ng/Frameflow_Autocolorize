@@ -1,0 +1,81 @@
+Bạn có thể tạo file `SETUP.md` với nội dung này:
+
+````md id="y7g1u9"
+# FrameFlow Setup Guide
+
+## 1. Clone Project
+
+```bash
+git clone https://github.com/Khanh-0/Frame_flow.git
+cd Frame_flow
+````
+
+---
+
+# 2. Install Dependencies
+
+```bash
+npm install
+```
+
+---
+
+# 3. Install Supabase Client
+
+Nếu thiếu package Supabase thì chạy:
+
+```bash
+npm install @supabase/supabase-js
+```
+
+---
+
+# 4. IMPORTANT — Database Types
+
+⚠️ KHÔNG tự sửa `database.types.ts`
+
+File này được generate trực tiếp từ schema Supabase.
+
+Chỉ regenerate khi database schema thay đổi.
+
+Command:
+
+```bash
+npx supabase gen types typescript --project-id bfcpdguzxpsatfvtdyxl --schema public > src/lib/database.types.ts
+```
+
+Project ID:
+
+```txt
+bfcpdguzxpsatfvtdyxl
+```
+
+Schema đang dùng:
+
+```txt
+public
+```
+
+---
+
+# 5. Environment Variables
+
+Tạo file `.env`
+
+Ví dụ:
+
+```env
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+---
+
+# 6. Run Project
+
+```bash
+npm run dev
+```
+
+````
+
