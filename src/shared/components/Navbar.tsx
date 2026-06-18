@@ -1,5 +1,4 @@
 import { Link, useLocation } from "react-router";
-import { Zap } from "lucide-react";
 
 export function Navbar() {
 
@@ -26,24 +25,16 @@ export function Navbar() {
         style={{ maxWidth: "1200px", padding: "0 40px" }}
       >
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 no-underline">
-          <div
-            className="flex items-center justify-center rounded-lg"
-            style={{ width: 34, height: 34, background: "#3B82F6" }}
-          >
-            <Zap size={18} color="white" fill="white" />
-          </div>
-          <span
+        <Link to="/" className="flex items-center no-underline">
+          <img
+            src="/frameflow-logo.png"
+            alt="FrameFlow"
             style={{
-              fontFamily: "'Inter', sans-serif",
-              fontWeight: 700,
-              fontSize: 22,
-              color: "#1E293B",
-              letterSpacing: "-0.3px",
+              height: 48,
+              width: "auto",
+              display: "block",
             }}
-          >
-            FrameFlow
-          </span>
+          />
         </Link>
 
         {/* Nav Items */}
