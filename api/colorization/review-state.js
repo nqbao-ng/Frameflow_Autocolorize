@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 
     const { data: jobFrame, error: jobFrameError } = await supabase
       .from('colorization_job_frames')
-      .select('*, frames(*)')
+      .select('*')
       .eq('job_id', job.id)
       .eq('frame_id', frameId)
       .maybeSingle();
@@ -38,6 +38,14 @@ export default async function handler(req, res) {
     if (!jobFrame) {
       return sendJson(res, 200, { ok: true, has_review: false, job, job_frame: null });
     }
+
+    const { data: frameRecord, error: frameError } = await supabase
+      .from('frames')
+      .select('*')
+      .eq('id', frameId)
+      .maybeSingle();
+
+    if (frameError) throw frameError;
 
     const { data: roleMemory, error: roleMemoryError } = await supabase
       .from('role_memory')
@@ -86,11 +94,11 @@ export default async function handler(req, res) {
       has_review: job.current_review_frame_id === frameId || jobFrame.pipeline_status === 'needs_review_not_reference',
       job,
       job_frame: jobFrame,
-      frame: jobFrame.frames,
+      frame: frameRecord,
       status: jobFrame.pipeline_status,
-      preview_url: jobFrame.low_confidence_overlay_url || jobFrame.colorized_url || jobFrame.frames?.colored_image_url || jobFrame.frames?.source_image_url || null,
-      frame_url: jobFrame.frames?.source_image_url || null,
-      result_url: jobFrame.colorized_url || jobFrame.frames?.colored_image_url || null,
+      preview_url: jobFrame.low_confidence_overlay_url || jobFrame.colorized_url || frameRecord?.colored_image_url || frameRecord?.source_image_url || null,
+      frame_url: frameRecord?.source_image_url || null,
+      result_url: jobFrame.colorized_url || frameRecord?.colored_image_url || null,
       palette: defaultRolePalette(roleMemory || []),
       role_palette: rolePalette,
       segments,

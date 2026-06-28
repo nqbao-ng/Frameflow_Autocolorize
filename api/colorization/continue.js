@@ -38,7 +38,7 @@ export default async function handler(req, res) {
 
     const { data: nextFrame, error: nextError } = await supabase
       .from('colorization_job_frames')
-      .select('*, frames(*)')
+      .select('*')
       .eq('job_id', job.id)
       .gte('frame_index', nextIndex)
       .eq('pipeline_status', FRAME_PIPELINE_STATUS.PENDING)
@@ -69,7 +69,15 @@ export default async function handler(req, res) {
       });
     }
 
-    const sourceUrl = nextFrame.frames?.source_image_url || null;
+    const { data: frameRecord, error: frameError } = await supabase
+      .from('frames')
+      .select('*')
+      .eq('id', nextFrame.frame_id)
+      .maybeSingle();
+
+    if (frameError) throw frameError;
+
+    const sourceUrl = frameRecord?.source_image_url || frameRecord?.colored_image_url || nextFrame.colorized_url || null;
     const mockSegments = buildMockSegments(Number(nextFrame.frame_index ?? 0));
 
     // This is the first production-safe integration mode:
