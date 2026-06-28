@@ -14,6 +14,10 @@ import {
   updateFrameColor,
 } from "../services/frame.api";
 import type { ToastMessage } from "../components/Toast";
+import {
+  continueColorizationJob,
+  startColorizationJob,
+} from "../services/colorization.api";
 export function useDashboard() {
   const { projectId } = useParams();
   const [activeFrame, setActiveFrame] = useState(0);
@@ -237,16 +241,17 @@ export function useDashboard() {
     saveCurrentFrame();
   }, [activeFrame, saveCurrentFrame]);
 
-  const handleSaveCurrentFrame = useCallback(async () => {
+  const handleSaveCurrentFrame = useCallback(async (): Promise<string | null> => {
     try {
-      if (!projectId) return;
+      if (!projectId) return null;
 
       const frame = uncoloredFiles[activeFrame];
-      if (!frame) return;
+      if (!frame) return null;
 
-      // Merge all layers (colorRef + bgRef + canvasRef) before uploading
+      // Merge all layers (colorRef + bgRef + canvasRef) before uploading.
+      // Review/Correction uses this as the actual corrected keyframe image.
       const blob = await paintCanvasRef.current?.getFlattenedBlob() ?? null;
-      if (!blob) return;
+      if (!blob) return null;
 
       const coloredUrl = await uploadColoredFrame(blob, projectId, frame.id);
 
@@ -257,10 +262,14 @@ export function useDashboard() {
           index === activeFrame ? { ...item, paintUrl: coloredUrl } : item,
         ),
       );
+
+      return coloredUrl;
     } catch (error) {
       console.error("SAVE FRAME ERROR:", error);
+      addToast("❌ Lỗi khi lưu correction keyframe", "error");
+      return null;
     }
-  }, [activeFrame, projectId, uncoloredFiles]);
+  }, [activeFrame, addToast, projectId, uncoloredFiles]);
 
   const handleUndo = useCallback(() => {
     const stack = undoStack[activeFrame] || [];
@@ -350,18 +359,61 @@ export function useDashboard() {
   };
 
   // ── AI handlers ────────────────────────────────────────────────────────────
-  const handleAutoColor = () => {
-    setIsColoring(true);
-    setTimeout(() => {
-      const newFrameStates = [...frameStates];
-      paintableFrames.forEach((frameIdx) => {
-        if (frameIdx < uncoloredFiles.length) {
-          newFrameStates[frameIdx] = "ai" as FrameState;
-        }
+  const handleAutoColor = async () => {
+    if (!projectId) {
+      addToast("❌ Không tìm thấy project hiện tại", "error");
+      return;
+    }
+
+    if (uncoloredFiles.length === 0) {
+      addToast("❌ Vui lòng upload sketch frames trước", "error");
+      return;
+    }
+
+    if (!referenceImage) {
+      addToast("❌ Vui lòng chọn colored keyframe/reference trước", "error");
+      return;
+    }
+
+    if (referenceImage.id.startsWith("custom-")) {
+      addToast("❌ Reference custom chưa được lưu thành frame. Hãy upload colored keyframe vào frame hiện tại trước.", "error");
+      return;
+    }
+
+    try {
+      setIsColoring(true);
+      addToast("⏳ Đang tạo colorization job...", "info", 5000);
+
+      const started = await startColorizationJob({
+        projectId,
+        referenceFrameId: referenceImage.id,
       });
-      setFrameStates(newFrameStates);
+
+      const continued = await continueColorizationJob({
+        projectId,
+        jobId: started.job.id,
+      });
+
+      if (continued.frame_id) {
+        const reviewIndex = uncoloredFiles.findIndex((frame) => frame.id === continued.frame_id);
+        if (reviewIndex >= 0) {
+          handleFrameChange(reviewIndex);
+        }
+      }
+
+      if (continued.status === "needs_review_not_reference") {
+        addToast("⚠️ Frame không chắc. Mở Review/Correction trong RightPanel.", "info", 7000);
+      } else if (continued.status === "completed") {
+        addToast("✅ Sequence đã hoàn thành", "success");
+      } else {
+        addToast("✅ Core colorization job đã bắt đầu", "success");
+      }
+    } catch (error) {
+      console.error("AUTO COLOR CORE ERROR:", error);
+      addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 7000);
+    } finally {
       setIsColoring(false);
-    }, 1800);
+    }
   };
 
   const handleColorCurrentFrame = () =>
@@ -426,22 +478,60 @@ const handleImportUncolored = async (
     console.error(error);
   }
 };
-const handleCustomColoredUpload = (
+const handleCustomColoredUpload = async (
   e: React.ChangeEvent<HTMLInputElement>,
 ) => {
   const file = e.target.files?.[0];
 
   if (!file) return;
 
-  setReferenceImage({
-    id: `custom-${Date.now()}`,
-    name: file.name,
-    url: URL.createObjectURL(file),
-  });
+  if (!projectId) {
+    addToast("❌ Không tìm thấy project hiện tại", "error");
+    e.target.value = "";
+    return;
+  }
 
-  setShowReferenceModal(false);
+  const currentFrame = uncoloredFiles[activeFrame];
+  if (!currentFrame) {
+    addToast("❌ Hãy upload sketch frame trước khi upload colored keyframe", "error");
+    e.target.value = "";
+    return;
+  }
 
-  e.target.value = "";
+  try {
+    addToast("⏳ Đang lưu colored keyframe...", "info", 5000);
+
+    const coloredUrl = await uploadColoredFrame(
+      file,
+      projectId,
+      currentFrame.id,
+    );
+
+    await updateFrameColor(currentFrame.id, coloredUrl);
+
+    const savedReference = {
+      ...currentFrame,
+      name: file.name,
+      paintUrl: coloredUrl,
+      url: coloredUrl,
+    };
+
+    setUncoloredFiles((prev) =>
+      prev.map((item, index) =>
+        index === activeFrame ? { ...item, paintUrl: coloredUrl } : item,
+      ),
+    );
+
+    setReferenceImage(savedReference);
+    setFrameRefMap((prev) => ({ ...prev, [activeFrame]: savedReference }));
+    setShowReferenceModal(false);
+    addToast("✅ Colored keyframe đã được lưu và chọn làm reference", "success");
+  } catch (error) {
+    console.error("CUSTOM COLORED UPLOAD ERROR:", error);
+    addToast(`❌ Lỗi lưu colored keyframe: ${(error as Error).message}`, "error", 7000);
+  } finally {
+    e.target.value = "";
+  }
 };
 
   // ── Reference handlers ─────────────────────────────────────────────────────
@@ -743,6 +833,9 @@ const handleCustomColoredUpload = (
   };
 
   return {
+    // Project state
+    projectId,
+
     // Frame state
     activeFrame, setActiveFrame,
     isPlaying, setIsPlaying,

@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { ColorPickerWheel } from "./ColorPickerWheel";
 import { Slider } from "./Slider";
+import { ReviewCorrectionPanel } from "./ReviewCorrectionPanel";
 import { TOOLS, BLEND_MODES, PALETTE_ROWS } from "../constants/dashboardData";
 import type { useDashboard } from "../hooks/useDashboard";
 
@@ -129,6 +130,9 @@ export function RightPanel({ ctx }: RightPanelProps) {
             </div>
           )}
         </div>
+
+        {/* ── REVIEW / CORRECTION PANEL ───────────────── */}
+        <ReviewCorrectionPanel ctx={ctx} />
 
         {/* ── COLOR PANEL ──────────────────────────────── */}
         <div style={{ borderBottom: "1px solid #F1F5F9" }}>
