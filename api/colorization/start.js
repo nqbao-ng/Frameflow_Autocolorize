@@ -26,12 +26,20 @@ export default async function handler(req, res) {
       return sendError(res, 400, 'Project has no frames. Upload sketch frames first.');
     }
 
-    let referenceFrame = referenceFrameId
+    const referenceFrame = referenceFrameId
       ? frames.find((frame) => frame.id === referenceFrameId)
-      : frames.find((frame) => frame.colored_image_url) || frames[0];
+      : frames.find((frame) => frame.colored_image_url);
 
     if (!referenceFrame) {
-      return sendError(res, 400, 'Reference frame was not found in this project.');
+      return sendError(res, 400, 'No colored reference/keyframe found. Upload a colored keyframe first.');
+    }
+
+    if (!referenceFrame.source_image_url) {
+      return sendError(res, 400, 'Reference frame is missing source_image_url.');
+    }
+
+    if (!referenceFrame.colored_image_url) {
+      return sendError(res, 400, 'Reference frame must have colored_image_url. Save/import the colored keyframe first.');
     }
 
     const firstNextIndex = Math.min(frames.length, Number(referenceFrame.frame_index ?? 0) + 1);
@@ -46,9 +54,22 @@ export default async function handler(req, res) {
         settings: {
           mode: 'keyframe_guided_sequence',
           reference_frame_id: referenceFrame.id,
-          backend: 'vercel_serverless_core',
-          ai_runtime: 'disabled_until_configured',
-          created_from: 'FrameFlow RightPanel',
+          backend: 'frameflow_cv_service',
+          ai_runtime: 'bedrock_vision_optional_for_suggestions_only',
+          generation_api: 'none',
+          line_threshold: 180,
+          adaptive_threshold: true,
+          gap_close_kernel: 3,
+          gap_close_iterations: 1,
+          line_dilate: 1,
+          min_segment_area: 25,
+          max_side: 0,
+          low_confidence_threshold: 0.55,
+          flow_min_ratio: 0.16,
+          use_flow: true,
+          line_mode: 'original',
+          max_low_confidence: 20,
+          created_from: 'FrameFlow RightPanel/Toolbar',
         },
       })
       .select('*')
@@ -71,7 +92,7 @@ export default async function handler(req, res) {
         reference_used_frame_id: isReference ? null : referenceFrame.id,
         colorized_url: frame.colored_image_url || null,
         confidence_summary: isReference
-          ? { role: 'initial_colored_keyframe', confidence: 1 }
+          ? { role: 'initial_colored_keyframe', confidence_score: 1, engine: 'user_reference' }
           : {},
       };
     });
@@ -82,17 +103,21 @@ export default async function handler(req, res) {
 
     if (frameError) throw frameError;
 
-    await supabase
+    const { data: runningJob, error: runningError } = await supabase
       .from('colorization_jobs')
       .update({ status: JOB_STATUS.RUNNING })
-      .eq('id', job.id);
+      .eq('id', job.id)
+      .select('*')
+      .single();
+
+    if (runningError) throw runningError;
 
     return sendJson(res, 200, {
       ok: true,
-      job: { ...job, status: JOB_STATUS.RUNNING },
+      job: runningJob,
       reference_frame: referenceFrame,
       total_frames: frames.length,
-      message: 'Colorization core job created. Call /api/colorization/continue to process the next frame.',
+      message: 'FrameFlow CV job created. Call /api/colorization/continue to process frames until review/completion.',
     });
   } catch (error) {
     return sendError(res, 500, 'Failed to start colorization job', String(error?.message || error));

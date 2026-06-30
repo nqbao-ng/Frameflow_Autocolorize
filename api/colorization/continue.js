@@ -1,14 +1,214 @@
 import {
   FRAME_PIPELINE_STATUS,
   JOB_STATUS,
-  buildMockSegments,
+  buildAssetPaths,
+  buildCvSettings,
+  callCvService,
   ensureMethod,
+  getFrameById,
   getLatestJob,
+  getRoleMemory,
   getSupabaseAdmin,
   readJsonBody,
   sendError,
   sendJson,
+  uploadBase64Asset,
 } from './_shared.js';
+
+async function findNextPendingJobFrame(supabase, jobId, nextIndex) {
+  const { data, error } = await supabase
+    .from('colorization_job_frames')
+    .select('*')
+    .eq('job_id', jobId)
+    .gte('frame_index', Number(nextIndex ?? 0))
+    .eq('pipeline_status', FRAME_PIPELINE_STATUS.PENDING)
+    .order('frame_index', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function completeJob(supabase, jobId) {
+  const { data, error } = await supabase
+    .from('colorization_jobs')
+    .update({
+      status: JOB_STATUS.COMPLETED,
+      current_review_frame_id: null,
+    })
+    .eq('id', jobId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function processOneFrame({ supabase, projectId, job }) {
+  const nextFrame = await findNextPendingJobFrame(supabase, job.id, job.next_frame_index);
+
+  if (!nextFrame) {
+    const completedJob = await completeJob(supabase, job.id);
+    return {
+      kind: 'completed',
+      status: JOB_STATUS.COMPLETED,
+      job: completedJob,
+      message: 'All frames completed.',
+    };
+  }
+
+  const frameRecord = await getFrameById(supabase, nextFrame.frame_id);
+  if (!frameRecord) throw new Error(`Frame not found: ${nextFrame.frame_id}`);
+
+  const referenceFrame = await getFrameById(supabase, job.last_trusted_frame_id);
+  if (!referenceFrame) throw new Error('Missing last trusted reference frame. Upload/select a colored keyframe first.');
+
+  const sourceImageUrl = frameRecord.source_image_url || frameRecord.colored_image_url;
+  const referenceLineUrl = referenceFrame.source_image_url;
+  const referenceColorUrl = referenceFrame.colored_image_url;
+
+  if (!sourceImageUrl) throw new Error('Current frame has no source_image_url.');
+  if (!referenceLineUrl) throw new Error('Reference frame has no source_image_url.');
+  if (!referenceColorUrl) throw new Error('Reference frame has no colored_image_url. Save/import the colored keyframe first.');
+
+  await supabase
+    .from('colorization_job_frames')
+    .update({ pipeline_status: FRAME_PIPELINE_STATUS.PROCESSING })
+    .eq('id', nextFrame.id);
+
+  const roleMemory = await getRoleMemory(supabase, projectId);
+
+  const cv = await callCvService('/v1/colorize-frame', {
+    project_id: projectId,
+    job_id: job.id,
+    frame_id: frameRecord.id,
+    frame_name: frameRecord.name || nextFrame.frame_name || `frame_${nextFrame.frame_index}.png`,
+    frame_index: Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0),
+    source_image_url: sourceImageUrl,
+    reference_line_url: referenceLineUrl,
+    reference_color_url: referenceColorUrl,
+    reference_frame_id: referenceFrame.id,
+    role_memory: roleMemory,
+    settings: buildCvSettings(job.settings || {}),
+  });
+
+  const paths = buildAssetPaths({
+    projectId,
+    jobId: job.id,
+    frameId: frameRecord.id,
+    frameIndex: Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0),
+    frameName: frameRecord.name || nextFrame.frame_name,
+  });
+
+  const bucket = 'colored-frames';
+  const colorizedUrl = await uploadBase64Asset(supabase, {
+    bucket,
+    path: paths.colorized,
+    base64: cv.assets.colorized_png_base64,
+    contentType: 'image/png',
+  });
+  const overlayUrl = await uploadBase64Asset(supabase, {
+    bucket,
+    path: paths.overlay,
+    base64: cv.assets.low_confidence_overlay_png_base64,
+    contentType: 'image/png',
+  });
+  const segmentIdsUrl = await uploadBase64Asset(supabase, {
+    bucket,
+    path: paths.segmentIds,
+    base64: cv.assets.segment_ids_png_base64,
+    contentType: 'image/png',
+  });
+  const segmentsJsonUrl = await uploadBase64Asset(supabase, {
+    bucket,
+    path: paths.segmentsJson,
+    base64: cv.assets.segments_json_base64,
+    contentType: 'application/json',
+  });
+
+  const needsReview = cv.status === FRAME_PIPELINE_STATUS.NEEDS_REVIEW;
+  const pipelineStatus = needsReview ? FRAME_PIPELINE_STATUS.NEEDS_REVIEW : FRAME_PIPELINE_STATUS.COLORIZED;
+
+  const confidenceSummary = {
+    mode: 'cv_keyframe_guided_propagation',
+    engine: 'frameflow_cv_service',
+    confidence_score: cv.confidence_score,
+    low_confidence_count: cv.low_confidence_count,
+    num_segments: cv.num_segments,
+    reason: cv.reason,
+    reference_used_frame_id: referenceFrame.id,
+    segments: cv.segments || [],
+    debug: cv.debug || {},
+  };
+
+  const { data: updatedJobFrame, error: updateFrameError } = await supabase
+    .from('colorization_job_frames')
+    .update({
+      pipeline_status: pipelineStatus,
+      reference_used_frame_id: referenceFrame.id,
+      low_confidence_count: cv.low_confidence_count,
+      confidence_summary: confidenceSummary,
+      colorized_url: colorizedUrl,
+      low_confidence_overlay_url: overlayUrl,
+      segment_ids_url: segmentIdsUrl,
+      segments_json_url: segmentsJsonUrl,
+    })
+    .eq('id', nextFrame.id)
+    .select('*')
+    .single();
+
+  if (updateFrameError) throw updateFrameError;
+
+  // Keep the generated colorized preview on the frame so the canvas can load/edit it.
+  const { error: updateRealFrameError } = await supabase
+    .from('frames')
+    .update({
+      colored_image_url: colorizedUrl,
+      status: needsReview ? 'needs_review_not_reference' : 'colorized',
+    })
+    .eq('id', frameRecord.id);
+
+  if (updateRealFrameError) throw updateRealFrameError;
+
+  const nextFrameIndex = Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0) + 1;
+  const jobUpdate = needsReview
+    ? {
+        status: JOB_STATUS.WAITING_REVIEW,
+        current_review_frame_id: frameRecord.id,
+        next_frame_index: Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0),
+      }
+    : {
+        status: JOB_STATUS.RUNNING,
+        current_review_frame_id: null,
+        last_trusted_frame_id: frameRecord.id,
+        next_frame_index: nextFrameIndex,
+      };
+
+  const { data: updatedJob, error: updateJobError } = await supabase
+    .from('colorization_jobs')
+    .update(jobUpdate)
+    .eq('id', job.id)
+    .select('*')
+    .single();
+
+  if (updateJobError) throw updateJobError;
+
+  return {
+    kind: needsReview ? 'needs_review' : 'colorized',
+    status: pipelineStatus,
+    job: updatedJob,
+    job_frame: updatedJobFrame,
+    frame_id: frameRecord.id,
+    result_url: colorizedUrl,
+    overlay_url: overlayUrl,
+    segment_ids_url: segmentIdsUrl,
+    segments_json_url: segmentsJsonUrl,
+    message: needsReview
+      ? 'Frame needs review. Open RightPanel Review/Correction.'
+      : 'Frame colorized by CV propagation.',
+  };
+}
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['POST'])) return;
@@ -17,11 +217,12 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const projectId = body.projectId || body.project_id;
     const jobId = body.jobId || body.job_id || null;
+    const maxSteps = Math.max(1, Math.min(Number(body.maxSteps ?? body.max_steps ?? 8), 20));
 
     if (!projectId) return sendError(res, 400, 'projectId is required');
 
     const supabase = getSupabaseAdmin();
-    const job = await getLatestJob(supabase, projectId, jobId);
+    let job = await getLatestJob(supabase, projectId, jobId);
 
     if (!job) return sendError(res, 404, 'No colorization job found for this project');
 
@@ -30,103 +231,33 @@ export default async function handler(req, res) {
         ok: true,
         status: JOB_STATUS.WAITING_REVIEW,
         job,
+        frame_id: job.current_review_frame_id,
         message: 'Pipeline is waiting for user correction before continuing.',
       });
     }
 
-    const nextIndex = Number(job.next_frame_index ?? 0);
+    const processed = [];
+    let last = null;
 
-    const { data: nextFrame, error: nextError } = await supabase
-      .from('colorization_job_frames')
-      .select('*')
-      .eq('job_id', job.id)
-      .gte('frame_index', nextIndex)
-      .eq('pipeline_status', FRAME_PIPELINE_STATUS.PENDING)
-      .order('frame_index', { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    for (let i = 0; i < maxSteps; i += 1) {
+      last = await processOneFrame({ supabase, projectId, job });
+      processed.push(last);
+      job = last.job;
 
-    if (nextError) throw nextError;
-
-    if (!nextFrame) {
-      const { data: completedJob, error: completeError } = await supabase
-        .from('colorization_jobs')
-        .update({
-          status: JOB_STATUS.COMPLETED,
-          current_review_frame_id: null,
-        })
-        .eq('id', job.id)
-        .select('*')
-        .single();
-
-      if (completeError) throw completeError;
-
-      return sendJson(res, 200, {
-        ok: true,
-        status: JOB_STATUS.COMPLETED,
-        job: completedJob,
-        message: 'All frames completed.',
-      });
+      if (last.kind === 'needs_review' || last.kind === 'completed') break;
     }
-
-    const { data: frameRecord, error: frameError } = await supabase
-      .from('frames')
-      .select('*')
-      .eq('id', nextFrame.frame_id)
-      .maybeSingle();
-
-    if (frameError) throw frameError;
-
-    const sourceUrl = frameRecord?.source_image_url || frameRecord?.colored_image_url || nextFrame.colorized_url || null;
-    const mockSegments = buildMockSegments(Number(nextFrame.frame_index ?? 0));
-
-    // This is the first production-safe integration mode:
-    // it pauses on the next frame and asks the user to confirm/fix segments.
-    // Replace this block later with real CV propagation + AI confidence check.
-    const confidenceSummary = {
-      mode: 'review_required_stub',
-      reason: 'No production propagation engine configured yet. Pausing for human-in-the-loop correction.',
-      confidence_score: 0.61,
-      low_confidence_count: mockSegments.length,
-      segments: mockSegments,
-      reference_used_frame_id: job.last_trusted_frame_id,
-    };
-
-    const { data: updatedJobFrame, error: updateFrameError } = await supabase
-      .from('colorization_job_frames')
-      .update({
-        pipeline_status: FRAME_PIPELINE_STATUS.NEEDS_REVIEW,
-        reference_used_frame_id: job.last_trusted_frame_id,
-        low_confidence_count: mockSegments.length,
-        confidence_summary: confidenceSummary,
-        low_confidence_overlay_url: sourceUrl,
-      })
-      .eq('id', nextFrame.id)
-      .select('*')
-      .single();
-
-    if (updateFrameError) throw updateFrameError;
-
-    const { data: updatedJob, error: updateJobError } = await supabase
-      .from('colorization_jobs')
-      .update({
-        status: JOB_STATUS.WAITING_REVIEW,
-        current_review_frame_id: nextFrame.frame_id,
-        next_frame_index: Number(nextFrame.frame_index ?? 0),
-      })
-      .eq('id', job.id)
-      .select('*')
-      .single();
-
-    if (updateJobError) throw updateJobError;
 
     return sendJson(res, 200, {
       ok: true,
-      status: FRAME_PIPELINE_STATUS.NEEDS_REVIEW,
-      job: updatedJob,
-      job_frame: updatedJobFrame,
-      frame_id: nextFrame.frame_id,
-      message: 'Frame needs review. Open RightPanel Review/Correction.',
+      status: last?.status || job.status,
+      job,
+      job_frame: last?.job_frame,
+      frame_id: last?.frame_id,
+      result_url: last?.result_url,
+      overlay_url: last?.overlay_url,
+      processed_count: processed.filter((item) => item.kind === 'colorized').length,
+      processed,
+      message: last?.message || 'Colorization continued.',
     });
   } catch (error) {
     return sendError(res, 500, 'Failed to continue colorization job', String(error?.message || error));

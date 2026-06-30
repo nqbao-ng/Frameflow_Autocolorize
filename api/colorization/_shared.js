@@ -190,3 +190,130 @@ export function normalizeCorrectionList(body) {
       metadata: item.metadata || {},
     }));
 }
+
+// -----------------------------
+// Real CV service integration
+// -----------------------------
+
+export const CV_ENGINE_STATUS = {
+  COLORIZED: 'colorized',
+  NEEDS_REVIEW: 'needs_review_not_reference',
+};
+
+export function getCvServiceConfig() {
+  const baseUrl = process.env.FRAMEFLOW_CV_API_URL || process.env.CV_API_URL;
+  const apiKey = process.env.FRAMEFLOW_CV_API_KEY || process.env.CV_API_KEY || '';
+
+  if (!baseUrl) {
+    throw new Error('Missing FRAMEFLOW_CV_API_URL. Deploy backend_cv first, then set this env in Vercel.');
+  }
+
+  return {
+    baseUrl: baseUrl.replace(/\/$/, ''),
+    apiKey,
+  };
+}
+
+export async function callCvService(path, payload) {
+  const { baseUrl, apiKey } = getCvServiceConfig();
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { 'x-frameflow-key': apiKey } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok || data?.ok === false) {
+    throw new Error(data?.detail || data?.error || `CV service failed: ${response.status}`);
+  }
+
+  return data;
+}
+
+export function sanitizePathPart(value) {
+  return String(value || 'asset')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 120);
+}
+
+export function base64ToBuffer(base64) {
+  return Buffer.from(String(base64 || ''), 'base64');
+}
+
+export async function uploadBase64Asset(supabase, { bucket, path, base64, contentType = 'image/png' }) {
+  const body = base64ToBuffer(base64);
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, body, {
+      contentType,
+      upsert: true,
+    });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export async function getRoleMemory(supabase, projectId) {
+  const { data, error } = await supabase
+    .from('role_memory')
+    .select('role_id,locked_color,source_segment_id,priority,is_locked')
+    .eq('project_id', projectId)
+    .order('priority', { ascending: false });
+
+  if (error) throw error;
+  return data || [];
+}
+
+export async function getFrameById(supabase, frameId) {
+  if (!frameId) return null;
+  const { data, error } = await supabase
+    .from('frames')
+    .select('*')
+    .eq('id', frameId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+export function buildCvSettings(jobSettings = {}) {
+  return {
+    line_threshold: Number(jobSettings.line_threshold ?? 180),
+    adaptive_threshold: jobSettings.adaptive_threshold !== false,
+    gap_close_kernel: Number(jobSettings.gap_close_kernel ?? 3),
+    gap_close_iterations: Number(jobSettings.gap_close_iterations ?? 1),
+    line_dilate: Number(jobSettings.line_dilate ?? 1),
+    min_segment_area: Number(jobSettings.min_segment_area ?? 25),
+    max_side: Number(jobSettings.max_side ?? 0),
+    low_confidence_threshold: Number(jobSettings.low_confidence_threshold ?? 0.55),
+    flow_min_ratio: Number(jobSettings.flow_min_ratio ?? 0.16),
+    use_flow: jobSettings.use_flow !== false,
+    line_mode: jobSettings.line_mode || 'original',
+    max_low_confidence: Number(jobSettings.max_low_confidence ?? 20),
+    min_review_area: Number(jobSettings.min_review_area ?? 120),
+    min_review_area_ratio: Number(jobSettings.min_review_area_ratio ?? 0.0005),
+  };
+}
+
+export function buildAssetPaths({ projectId, jobId, frameId, frameIndex, frameName }) {
+  const safeProject = sanitizePathPart(projectId);
+  const safeJob = sanitizePathPart(jobId || 'job');
+  const safeFrame = sanitizePathPart(frameId);
+  const safeName = sanitizePathPart(frameName || `frame_${frameIndex}`);
+  const stem = safeName.replace(/\.[^.]+$/, '');
+  const prefix = `${safeProject}/colorization/${safeJob}/${String(frameIndex).padStart(4, '0')}_${safeFrame}_${stem}`;
+
+  return {
+    colorized: `${prefix}_colorized.png`,
+    overlay: `${prefix}_low_confidence_overlay.png`,
+    segmentIds: `${prefix}_segment_ids.png`,
+    segmentsJson: `${prefix}_segments.json`,
+  };
+}

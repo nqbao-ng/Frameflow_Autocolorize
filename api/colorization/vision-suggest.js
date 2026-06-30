@@ -1,19 +1,14 @@
 import {
-  buildMockSegments,
+  callCvService,
   ensureMethod,
+  getFrameById,
   getLatestJob,
+  getRoleMemory,
   getSupabaseAdmin,
   readJsonBody,
   sendError,
   sendJson,
 } from './_shared.js';
-
-const ROLE_BY_SEGMENT = {
-  1: { role_id: 'skin', color: '#F2B08C', confidence: 0.72 },
-  2: { role_id: 'hair', color: '#1E293B', confidence: 0.69 },
-  3: { role_id: 'shirt', color: '#3B82F6', confidence: 0.66 },
-  4: { role_id: 'background', color: '#E5E7EB', confidence: 0.74 },
-};
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['POST'])) return;
@@ -33,27 +28,53 @@ export default async function handler(req, res) {
     const job = await getLatestJob(supabase, projectId, jobId);
     if (!job) return sendError(res, 404, 'No colorization job found for this project');
 
-    // Replace this mock with Gemini/OpenAI/Nova Vision once key is configured.
-    const fallback = buildMockSegments().find((item) => Number(item.segment_id) === segmentId);
-    const suggestion = ROLE_BY_SEGMENT[segmentId] || {
-      role_id: fallback?.role_guess || 'unknown',
-      color: fallback?.suggested_color || '#8B5CF6',
-      confidence: fallback?.confidence || 0.55,
-    };
+    const frame = await getFrameById(supabase, frameId);
+    if (!frame) return sendError(res, 404, 'Frame not found');
+
+    const { data: jobFrame, error: jobFrameError } = await supabase
+      .from('colorization_job_frames')
+      .select('*')
+      .eq('job_id', job.id)
+      .eq('frame_id', frameId)
+      .maybeSingle();
+
+    if (jobFrameError) throw jobFrameError;
+
+    const roleMemory = await getRoleMemory(supabase, projectId);
+    const summary = jobFrame?.confidence_summary || {};
+    const segments = Array.isArray(summary.segments) ? summary.segments : [];
+
+    const referenceFrame = await getFrameById(supabase, job.last_trusted_frame_id);
+
+    const suggestion = await callCvService('/v1/vision-suggest', {
+      project_id: projectId,
+      job_id: job.id,
+      frame_id: frameId,
+      frame_name: frame.name || jobFrame?.frame_name || 'frame.png',
+      segment_id: segmentId,
+      line_url: frame.source_image_url || null,
+      colorized_url: jobFrame?.colorized_url || frame.colored_image_url || null,
+      segment_ids_url: jobFrame?.segment_ids_url || null,
+      reference_url: referenceFrame?.colored_image_url || null,
+      segments,
+      role_memory: roleMemory,
+    });
 
     const payload = {
       project_id: projectId,
       job_id: job.id,
       frame_id: frameId,
       clicked_segment_id: segmentId,
-      suggested_role_id: suggestion.role_id,
+      suggested_role_id: suggestion.role_id || 'unknown',
       suggested_segment_ids: [segmentId],
-      suggested_color: suggestion.color,
-      confidence: suggestion.confidence,
+      suggested_color: suggestion.color_hex || '#3B82F6',
+      confidence: Number(suggestion.confidence ?? 0.55),
       status: 'pending_user_confirm',
       raw_response: {
-        provider: 'mock_until_vision_api_configured',
-        reason: 'Deterministic fallback suggestion for UI/core integration test.',
+        provider: suggestion.provider || 'frameflow_cv_service',
+        model_id: suggestion.model_id || null,
+        reason: suggestion.reason || null,
+        raw_response: suggestion.raw_response || null,
       },
     };
 
@@ -74,6 +95,8 @@ export default async function handler(req, res) {
         color_hex: data.suggested_color,
         confidence: data.confidence,
         status: data.status,
+        reason: suggestion.reason || null,
+        provider: suggestion.provider || 'frameflow_cv_service',
       },
     });
   } catch (error) {
