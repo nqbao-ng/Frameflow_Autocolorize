@@ -72,6 +72,14 @@ def health() -> Dict[str, Any]:
         "bedrock_enabled": bedrock_enabled(),
     }
 
+@app.get("/")
+def root() -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "service": "frameflow_cv_service",
+        "message": "FrameFlow CV backend is running",
+        "health": "/health",
+    }
 # -----------------------------------------------------------------------------
 # Schemas
 # -----------------------------------------------------------------------------
