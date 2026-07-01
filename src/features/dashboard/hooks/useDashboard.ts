@@ -346,20 +346,79 @@ export function useDashboard() {
       return;
     }
 
-    const selectedIndices = Array.from(paintableFrames).sort((a, b) => a - b);
-    const targetFrameIds = (selectedIndices.length > 0
-      ? selectedIndices
-      : uncoloredFiles.map((_, index) => index))
-      .map((index) => uncoloredFiles[index])
-      .filter((frame): frame is ImportedFile => Boolean(frame && frame.id !== referenceImage.id))
-      .map((frame) => frame.id);
+    let effectiveReference = referenceImage;
+    const activeFrameRecord = uncoloredFiles[activeFrame];
 
+    // Nếu frame đang mở chính là reference và user vừa sửa tay trên canvas,
+    // cần lưu ảnh corrected lên Supabase trước khi start job mới.
+    if (activeFrameRecord?.id === referenceImage.id) {
+      const shouldSaveActiveReference =
+        framePaints[activeFrame] ||
+        frameStates[activeFrame] === "manual" ||
+        frameStates[activeFrame] === "ai";
+
+      if (shouldSaveActiveReference) {
+        addToast("⏳ Đang lưu frame hiện tại làm correction reference...", "info", 5000);
+
+        const savedUrl = await handleSaveCurrentFrame();
+
+        if (!savedUrl) {
+          addToast("❌ Chưa lưu được correction reference. Hãy đợi canvas load xong rồi thử lại.", "error", 7000);
+          return;
+        }
+
+        effectiveReference = {
+          ...activeFrameRecord,
+          paintUrl: savedUrl,
+        };
+
+        setReferenceImage(effectiveReference);
+      }
+    }
+
+    const referenceIndex = uncoloredFiles.findIndex(
+      (frame) => frame.id === effectiveReference.id,
+    );
+
+    if (referenceIndex < 0) {
+      addToast("❌ Reference frame không còn trong sequence", "error");
+      return;
+    }
+
+    const selectedIndices = Array.from(paintableFrames)
+      .filter((index) => index >= 0 && index < uncoloredFiles.length)
+      .sort((a, b) => a - b);
+
+    // Nếu user chưa tick frame nào, mặc định chỉ tô phía sau reference.
+    // Ví dụ chọn frame 3 làm ref => tự tô frame 4,5,6...
+    const candidateIndices =
+      selectedIndices.length > 0
+        ? selectedIndices
+        : uncoloredFiles
+            .map((_, index) => index)
+            .filter((index) => index > referenceIndex);
+
+    const targetIndices = candidateIndices.filter(
+      (index) => uncoloredFiles[index]?.id && uncoloredFiles[index].id !== effectiveReference.id,
+    );
+
+    const targetFrameIds = targetIndices.map((index) => uncoloredFiles[index].id);
     const uniqueTargetFrameIds = Array.from(new Set(targetFrameIds));
 
     if (uniqueTargetFrameIds.length === 0) {
-      addToast("❌ Không còn frame hợp lệ để Auto Color. Hãy chọn frame khác reference.", "error", 6000);
+      addToast(
+        "❌ Không có frame phía sau reference để Auto Color. Hãy tick frame muốn tô hoặc chọn reference sớm hơn.",
+        "error",
+        7000,
+      );
       return;
     }
+
+    const hasForward = targetIndices.some((index) => index > referenceIndex);
+    const hasBackward = targetIndices.some((index) => index < referenceIndex);
+
+    const direction: "forward" | "backward" | "both" =
+      hasForward && hasBackward ? "both" : hasBackward ? "backward" : "forward";
 
     try {
       setIsColoring(true);
@@ -367,15 +426,15 @@ export function useDashboard() {
 
       const started = await startColorizationJob({
         projectId,
-        referenceFrameId: referenceImage.id,
+        referenceFrameId: effectiveReference.id,
         targetFrameIds: uniqueTargetFrameIds,
-        direction: "both",
+        direction,
       });
 
       let jobId = started.job.id;
       let lastStatus = started.job.status;
-      let lastReviewFrameId: string | null = null;
       let totalProcessed = 0;
+
       const maxIterations = Math.max(uniqueTargetFrameIds.length + 3, 6);
 
       for (let step = 0; step < maxIterations; step += 1) {
@@ -392,7 +451,10 @@ export function useDashboard() {
         const latestFrames = await refreshFrames();
 
         if (continued.frame_id) {
-          const changedIndex = latestFrames.findIndex((frame) => frame.id === continued.frame_id);
+          const changedIndex = latestFrames.findIndex(
+            (frame) => frame.id === continued.frame_id,
+          );
+
           if (changedIndex >= 0) {
             setFrameStates((prev) => {
               const next = [...prev];
@@ -402,12 +464,23 @@ export function useDashboard() {
           }
         }
 
-        if (continued.status === "needs_review_not_reference" || continued.status === "waiting_review") {
-          lastReviewFrameId = continued.frame_id || continued.job.current_review_frame_id || null;
-          if (lastReviewFrameId) {
-            const reviewIndex = latestFrames.findIndex((frame) => frame.id === lastReviewFrameId);
-            if (reviewIndex >= 0) handleFrameChange(reviewIndex);
+        if (
+          continued.status === "needs_review_not_reference" ||
+          continued.status === "waiting_review"
+        ) {
+          const reviewFrameId =
+            continued.frame_id || continued.job.current_review_frame_id || null;
+
+          if (reviewFrameId) {
+            const reviewIndex = latestFrames.findIndex(
+              (frame) => frame.id === reviewFrameId,
+            );
+
+            if (reviewIndex >= 0) {
+              handleFrameChange(reviewIndex);
+            }
           }
+
           break;
         }
 
