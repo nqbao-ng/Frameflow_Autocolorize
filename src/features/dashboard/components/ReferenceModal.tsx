@@ -19,6 +19,9 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
 
   if (!showReferenceModal) return null;
 
+  const selectedFrame = uncoloredFiles.find((f) => f.id === selectedRefId);
+  const selectedIsValidReference = Boolean(selectedFrame?.paintUrl);
+
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) setShowReferenceModal(false); }}
@@ -43,7 +46,7 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
         {/* Tabs */}
         <div style={{ padding: "12px 22px 0", display: "flex", gap: 2, borderBottom: "1px solid #F1F5F9", flexShrink: 0 }}>
           {([
-            { id: "list" as const, label: "From Uncolored List", icon: <List size={11} /> },
+            { id: "list" as const, label: "Colored Keyframes", icon: <List size={11} /> },
             { id: "upload" as const, label: "Upload Colored Image", icon: <Upload size={11} /> },
           ]).map((tab) => (
             <button
@@ -76,27 +79,35 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
             ) : (
               <>
                 <p style={{ fontSize: 11, color: "#94A3B8", marginBottom: 12 }}>
-                  {uncoloredFiles.length} file{uncoloredFiles.length !== 1 ? "s" : ""} — click to select
+                  Chỉ frame đã có colored image mới được chọn làm reference. Frame chưa tô sẽ bị khóa.
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
                   {uncoloredFiles.map((frame) => {
                     const isSel = selectedRefId === frame.id;
+                    const canUseAsReference = Boolean(frame.paintUrl);
                     return (
                       <button
                         key={frame.id}
-                        onClick={() => setSelectedRefId(isSel ? null : frame.id)}
+                        onClick={() => canUseAsReference && setSelectedRefId(isSel ? null : frame.id)}
+                        disabled={!canUseAsReference}
                         style={{
                           border: isSel ? "2.5px solid #3B82F6" : "2px solid #E2E8F0",
-                          borderRadius: 10, overflow: "hidden", cursor: "pointer",
+                          borderRadius: 10, overflow: "hidden", cursor: canUseAsReference ? "pointer" : "not-allowed",
                           padding: 0, background: "white", position: "relative",
                           boxShadow: isSel ? "0 0 0 3px rgba(59,130,246,0.16)" : "none",
                           transition: "all 0.15s",
+                          opacity: canUseAsReference ? 1 : 0.48,
                         }}
                       >
-                        <img src={frame.url} alt={frame.name} style={{ width: "100%", height: 96, objectFit: "cover", display: "block" }} />
+                        <img src={frame.paintUrl || frame.url} alt={frame.name} style={{ width: "100%", height: 96, objectFit: "cover", display: "block" }} />
                         {isSel && (
                           <div style={{ position: "absolute", top: 6, right: 6, width: 18, height: 18, borderRadius: "50%", background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
                             <Check size={10} color="white" strokeWidth={3} />
+                          </div>
+                        )}
+                        {!canUseAsReference && (
+                          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(15,23,42,0.16)", color: "white", fontSize: 10, fontWeight: 800, textShadow: "0 1px 3px rgba(0,0,0,0.35)" }}>
+                            Not colored
                           </div>
                         )}
                         <div style={{ padding: "5px 8px", background: isSel ? "#EFF6FF" : "#FAFAFA", borderTop: "1px solid #F1F5F9" }}>
@@ -132,9 +143,9 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
           <div>
             {selectedRefId && refModalTab === "list" ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <img src={uncoloredFiles.find((f) => f.id === selectedRefId)?.url} alt="" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover" }} />
+                <img src={selectedFrame?.paintUrl || selectedFrame?.url} alt="" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover" }} />
                 <span style={{ fontSize: 11, color: "#475569" }}>
-                  <strong style={{ color: "#1E293B" }}>{uncoloredFiles.find((f) => f.id === selectedRefId)?.name}</strong> selected
+                  <strong style={{ color: "#1E293B" }}>{selectedFrame?.name}</strong> {selectedIsValidReference ? "selected" : "is not colored yet"}
                 </span>
               </div>
             ) : (
@@ -153,15 +164,15 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
             {refModalTab === "list" && (
               <button
                 onClick={handleConfirmReference}
-                disabled={!selectedRefId}
+                disabled={!selectedIsValidReference}
                 style={{
                   padding: "7px 16px", borderRadius: 8, border: "none",
-                  background: selectedRefId ? "#3B82F6" : "#E2E8F0",
-                  cursor: selectedRefId ? "pointer" : "not-allowed",
+                  background: selectedIsValidReference ? "#3B82F6" : "#E2E8F0",
+                  cursor: selectedIsValidReference ? "pointer" : "not-allowed",
                   fontSize: 12, fontWeight: 600,
-                  color: selectedRefId ? "white" : "#94A3B8",
+                  color: selectedIsValidReference ? "white" : "#94A3B8",
                   fontFamily: "'Inter',sans-serif",
-                  boxShadow: selectedRefId ? "0 2px 8px rgba(59,130,246,0.25)" : "none",
+                  boxShadow: selectedIsValidReference ? "0 2px 8px rgba(59,130,246,0.25)" : "none",
                   transition: "all 0.15s",
                 }}
               >

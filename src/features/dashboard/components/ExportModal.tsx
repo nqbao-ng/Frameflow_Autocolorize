@@ -14,6 +14,7 @@ interface ExportModalProps {
 export function ExportModal({ ctx, isOpen, onClose, frameIndex }: ExportModalProps) {
   const {
     uncoloredFiles,
+    framePaints,
     exportSingleFrame,
     exportAllFrames,
     addToast,
@@ -384,9 +385,9 @@ export function ExportModal({ ctx, isOpen, onClose, frameIndex }: ExportModalPro
                     onChange={() => handleSelectFrame(idx)}
                     style={{ width: 16, height: 16, cursor: "pointer", accentColor: "#3B82F6" }}
                   />
-                  {file.url && (
+                  {(framePaints[idx] || file.paintUrl || file.url) && (
                     <img
-                      src={file.url}
+                      src={framePaints[idx] || file.paintUrl || file.url}
                       alt={file.name}
                       style={{
                         width: 32,

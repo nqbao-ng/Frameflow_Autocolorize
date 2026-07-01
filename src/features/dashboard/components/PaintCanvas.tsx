@@ -7,10 +7,13 @@ export interface PaintCanvasHandle {
   getFlattenedBlob: () => Promise<Blob | null>;
   /** Returns the merged result as a dataURL string (for undo snapshots) */
   getFlattenedDataUrl: () => string | null;
+  /** Returns only the editable paint/color layer. Used when switching frames. */
+  getPaintLayerDataUrl: () => string | null;
 }
 
 interface PaintCanvasProps {
   imageUrl: string | null;
+  paintUrl?: string | null;
   tool: Tool;
   color: string;
   brushSize: number;
@@ -30,6 +33,7 @@ interface PaintCanvasProps {
 
 export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(function PaintCanvas({
   imageUrl,
+  paintUrl,
   tool,
   color,
   brushSize,
@@ -64,8 +68,8 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
         tmp.height = bg.height;
         const ctx = tmp.getContext("2d")!;
         if (colorRef.current) ctx.drawImage(colorRef.current, 0, 0);
-        ctx.drawImage(bg, 0, 0);
         if (canvasRef.current) ctx.drawImage(canvasRef.current, 0, 0);
+        ctx.drawImage(bg, 0, 0);
         tmp.toBlob(resolve, "image/png");
       }),
     getFlattenedDataUrl: () => {
@@ -76,20 +80,109 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
       tmp.height = bg.height;
       const ctx = tmp.getContext("2d")!;
       if (colorRef.current) ctx.drawImage(colorRef.current, 0, 0);
-      ctx.drawImage(bg, 0, 0);
       if (canvasRef.current) ctx.drawImage(canvasRef.current, 0, 0);
+      ctx.drawImage(bg, 0, 0);
       return tmp.toDataURL();
+    },
+    getPaintLayerDataUrl: () => {
+      const cv = canvasRef.current;
+      if (!cv || !cv.width || !cv.height) return null;
+      const ctx = cv.getContext("2d");
+      if (!ctx) return null;
+      const data = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      let hasVisiblePixel = false;
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] > 0) {
+          hasVisiblePixel = true;
+          break;
+        }
+      }
+      if (!hasVisiblePixel) return null;
+      return cv.toDataURL("image/png");
     },
     }), []);
 
-  // ── Load background image ──────────────────────────────────────────────────
-  useEffect(() => {
-    const cv = bgRef.current;
+  const fillBaseLayer = (width: number, height: number) => {
+    const base = colorRef.current;
+    if (!base) return;
+    base.width = width;
+    base.height = height;
+    const baseCtx = base.getContext("2d")!;
+    baseCtx.clearRect(0, 0, width, height);
+    baseCtx.fillStyle = "#FFFFFF";
+    baseCtx.fillRect(0, 0, width, height);
+  };
+
+  const drawTransparentLineart = (img: HTMLImageElement, lineCanvas: HTMLCanvasElement) => {
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+    lineCanvas.width = width;
+    lineCanvas.height = height;
+
+    const tmp = document.createElement("canvas");
+    tmp.width = width;
+    tmp.height = height;
+    const tmpCtx = tmp.getContext("2d")!;
+    tmpCtx.drawImage(img, 0, 0, width, height);
+
+    const imageData = tmpCtx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+      // Keep dark and anti-aliased line pixels, make white paper transparent.
+      if (lum < 245) {
+        const alpha = Math.min(255, Math.max(40, Math.round((245 - lum) * 3.2)));
+        data[i] = Math.min(r, 48);
+        data[i + 1] = Math.min(g, 48);
+        data[i + 2] = Math.min(b, 48);
+        data[i + 3] = alpha;
+      } else {
+        data[i + 3] = 0;
+      }
+    }
+
+    const ctx = lineCanvas.getContext("2d")!;
+    ctx.clearRect(0, 0, width, height);
+    ctx.putImageData(imageData, 0, 0);
+  };
+
+  const loadPaintLayer = (url: string | null | undefined) => {
+    const cv = canvasRef.current;
     if (!cv) return;
     const ctx = cv.getContext("2d")!;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    if (!url) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    };
+    img.src = url;
+  };
+
+  // ── Load source sketch as transparent lineart layer ───────────────────────
+  useEffect(() => {
+    const lineCanvas = bgRef.current;
+    if (!lineCanvas) return;
+    const lineCtx = lineCanvas.getContext("2d")!;
     if (!imageUrl) {
-      ctx.fillStyle = "#1E293B";
-      ctx.fillRect(0, 0, cv.width || 800, cv.height || 600);
+      const width = lineCanvas.width || 800;
+      const height = lineCanvas.height || 600;
+      lineCanvas.width = width;
+      lineCanvas.height = height;
+      if (canvasRef.current) {
+        canvasRef.current.width = width;
+        canvasRef.current.height = height;
+        canvasRef.current.getContext("2d")?.clearRect(0, 0, width, height);
+      }
+      fillBaseLayer(width, height);
+      lineCtx.clearRect(0, 0, width, height);
       return;
     }
     const img = new Image();
@@ -97,20 +190,18 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     img.onload = () => {
       const W = img.naturalWidth,
         H = img.naturalHeight;
-      cv.width = W;
-      cv.height = H;
+      lineCanvas.width = W;
+      lineCanvas.height = H;
       if (canvasRef.current) {
         canvasRef.current.width = W;
         canvasRef.current.height = H;
       }
-      if (colorRef.current) {
-        colorRef.current.width = W;
-        colorRef.current.height = H;
-      }
-      ctx.drawImage(img, 0, 0);
+      fillBaseLayer(W, H);
+      drawTransparentLineart(img, lineCanvas);
+      loadPaintLayer(paintUrl);
     };
     img.src = imageUrl;
-  }, [imageUrl]);
+  }, [imageUrl, paintUrl]);
 
   // ── Coordinate mapping ─────────────────────────────────────────────────────
   const getPos = (e: React.MouseEvent) => {
@@ -215,8 +306,8 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     tmp.height = h;
     const tmpCtx = tmp.getContext("2d")!;
     if (colorRef.current) tmpCtx.drawImage(colorRef.current, 0, 0);
-    tmpCtx.drawImage(bg, 0, 0);
     if (canvasRef.current) tmpCtx.drawImage(canvasRef.current, 0, 0);
+    tmpCtx.drawImage(bg, 0, 0);
     let cd = tmpCtx.getImageData(0, 0, w, h).data;
 
     let sealedMask: Uint8Array | null = null;
@@ -297,8 +388,8 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     tmp.height = bg.height;
     const ctx = tmp.getContext("2d")!;
     if (colorRef.current) ctx.drawImage(colorRef.current, 0, 0);
-    ctx.drawImage(bg, 0, 0);
     if (canvasRef.current) ctx.drawImage(canvasRef.current, 0, 0);
+    ctx.drawImage(bg, 0, 0);
     const px = ctx.getImageData(Math.floor(x), Math.floor(y), 1, 1).data;
     onColorPicked(rgbToHex(px[0], px[1], px[2]));
   };
@@ -321,6 +412,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     refCanvas.height = h;
     const refCtx = refCanvas.getContext("2d")!;
     if (colorRef.current) refCtx.drawImage(colorRef.current, 0, 0);
+    if (canvasRef.current) refCtx.drawImage(canvasRef.current, 0, 0);
     refCtx.drawImage(bg, 0, 0);
 
     const refData = refCtx.getImageData(0, 0, w, h).data;
@@ -386,6 +478,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     refCanvas.height = h;
     const refCtx = refCanvas.getContext("2d")!;
     if (colorRef.current) refCtx.drawImage(colorRef.current, 0, 0);
+    if (canvasRef.current) refCtx.drawImage(canvasRef.current, 0, 0);
     refCtx.drawImage(bg, 0, 0);
 
     const refData = refCtx.getImageData(0, 0, w, h).data;
@@ -454,6 +547,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     refCanvas.height = h;
     const refCtx = refCanvas.getContext("2d")!;
     if (colorRef.current) refCtx.drawImage(colorRef.current, 0, 0);
+    if (canvasRef.current) refCtx.drawImage(canvasRef.current, 0, 0);
     refCtx.drawImage(bg, 0, 0);
 
     const refData = refCtx.getImageData(0, 0, w, h).data;
@@ -597,7 +691,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
         borderRadius: 14,
       }}
     >
-       {/* Layer 1 — Color layer */}
+       {/* Layer 1 — base color layer */}
        <canvas
          ref={colorRef}
          style={{
@@ -606,20 +700,11 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
            width: "100%",
            height: "100%",
            objectFit: "contain",
+           zIndex: 1,
+           pointerEvents: "none",
          }}
        />
-      {/* Layer 2 — Line art / background */}
-      <canvas
-        ref={bgRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-        }}
-      />
-      {/* Layer 3 — Paint layer + event receiver */}
+      {/* Layer 2 — editable AI/manual color layer + event receiver */}
       <canvas
         ref={canvasRef}
         style={{
@@ -629,11 +714,25 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
           height: "100%",
           objectFit: "contain",
           cursor: getCursor(),
+          zIndex: 2,
         }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
+      />
+      {/* Layer 3 — sketch/line art stays on top so color never hides outlines */}
+      <canvas
+        ref={bgRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          zIndex: 3,
+          pointerEvents: "none",
+        }}
       />
     </div>
   );

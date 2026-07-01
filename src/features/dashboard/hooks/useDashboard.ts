@@ -18,6 +18,16 @@ import {
   continueColorizationJob,
   startColorizationJob,
 } from "../services/colorization.api";
+
+function normalizeImportedFrame(frame: any): ImportedFile {
+  return {
+    id: frame.id,
+    name: frame.name || `Frame ${Number(frame.frame_index ?? 0) + 1}`,
+    url: frame.source_image_url,
+    paintUrl: frame.colored_image_url || null,
+  };
+}
+
 export function useDashboard() {
   const { projectId } = useParams();
   const [activeFrame, setActiveFrame] = useState(0);
@@ -26,6 +36,22 @@ export function useDashboard() {
   const [showSpeedMenu, setShowSpeedMenu] = useState(false);
   const [frameStates, setFrameStates] = useState<FrameState[]>([]);
   const [uncoloredFiles, setUncoloredFiles] = useState<ImportedFile[]>([]);
+  const [referenceImage, setReferenceImage] = useState<ImportedFile | null>(null);
+
+  const refreshFrames = useCallback(async (): Promise<ImportedFile[]> => {
+    if (!projectId) return [];
+    const frames = await loadFrames(projectId);
+    const mapped = frames.map(normalizeImportedFrame);
+    setUncoloredFiles(mapped);
+    setFrameStates(mapped.map((frame) => (frame.paintUrl ? "ai" : "plain") as FrameState));
+    setReferenceImage((prev) => {
+      if (!prev) return null;
+      const fresh = mapped.find((frame) => frame.id === prev.id);
+      return fresh?.paintUrl ? fresh : null;
+    });
+    return mapped;
+  }, [projectId]);
+
   useEffect(() => {
   if (!projectId) {
     return;
@@ -36,18 +62,7 @@ export function useDashboard() {
 
   const init = async () => {
     try {
-      const frames = await loadFrames(
-        projectId,
-      );
-
-      setUncoloredFiles(
-        frames.map((frame: any) => ({
-          id: frame.id,
-          name: `Frame ${frame.frame_index + 1}`,
-          url: frame.source_image_url,
-          paintUrl: frame.colored_image_url
-        })),
-      );
+      await refreshFrames();
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.error('loadFrames timeout - API took too long');
@@ -65,8 +80,7 @@ export function useDashboard() {
     controller.abort();
     clearTimeout(timeoutId);
   };
-}, [projectId]);
-  const [referenceImage, setReferenceImage] = useState<ImportedFile | null>(null);
+}, [projectId, refreshFrames]);
   const [frameRefMap, setFrameRefMap] = useState<Record<number, ImportedFile>>({});
   const [contextMenu, setContextMenu] = useState<ContextMenu>(null);
   const [framePaints, setFramePaints] = useState<Record<number, string>>({});
@@ -165,65 +179,22 @@ export function useDashboard() {
 
   // ── Frame save/restore ─────────────────────────────────────────────────────
   const saveCurrentFrame = useCallback(() => {
-    // Use merged layers (colorRef + bgRef + canvasRef) so lockLineArt data is captured
-    const dataUrl = paintCanvasRef.current?.getFlattenedDataUrl();
+    // Keep only the editable paint/color layer in local state.
+    // The source sketch stays separate and is rendered above the color layer.
+    const dataUrl = paintCanvasRef.current?.getPaintLayerDataUrl();
     if (!dataUrl) return;
     setFramePaints((prev) => ({ ...prev, [activeFrame]: dataUrl }));
   }, [activeFrame]);
 
   const handleFrameChange = (idx: number) => {
-  saveCurrentFrame();
-
-  setActiveFrame(idx);
-
-  setIsPlaying(false);
-
-  setTimeout(() => {
-    const cv = canvasRef.current;
-
-    if (!cv) {
-      return;
-    }
-
-    const ctx = cv.getContext("2d")!;
-
-    ctx.clearRect(
-      0,
-      0,
-      cv.width,
-      cv.height,
-    );
-
-    const saved =
-      uncoloredFiles[idx]?.paintUrl
-      || framePaints[idx];
-
-    if (saved) {
-      const img = new Image();
-
-      img.onload = () => {
-        ctx.clearRect(
-          0,
-          0,
-          cv.width,
-          cv.height,
-        );
-
-        ctx.drawImage(
-          img,
-          0,
-          0,
-        );
-      };
-
-      img.src = saved;
-    }
-  }, 50);
-};
+    saveCurrentFrame();
+    setActiveFrame(idx);
+    setIsPlaying(false);
+  };
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
   const pushUndoSnapshot = useCallback(() => {
-    const snap = paintCanvasRef.current?.getFlattenedDataUrl();
+    const snap = paintCanvasRef.current?.getPaintLayerDataUrl();
     if (!snap) return;
     setUndoStack((prev) => ({
       ...prev,
@@ -370,47 +341,93 @@ export function useDashboard() {
       return;
     }
 
-    if (!referenceImage) {
-      addToast("❌ Vui lòng chọn colored keyframe/reference trước", "error");
+    if (!referenceImage?.id || !referenceImage.paintUrl) {
+      addToast("❌ Vui lòng chọn colored keyframe/reference đã có màu trước", "error");
       return;
     }
 
-    if (referenceImage.id.startsWith("custom-")) {
-      addToast("❌ Reference custom chưa được lưu thành frame. Hãy upload colored keyframe vào frame hiện tại trước.", "error");
+    const selectedIndices = Array.from(paintableFrames).sort((a, b) => a - b);
+    const targetFrameIds = (selectedIndices.length > 0
+      ? selectedIndices
+      : uncoloredFiles.map((_, index) => index))
+      .map((index) => uncoloredFiles[index])
+      .filter((frame): frame is ImportedFile => Boolean(frame && frame.id !== referenceImage.id))
+      .map((frame) => frame.id);
+
+    const uniqueTargetFrameIds = Array.from(new Set(targetFrameIds));
+
+    if (uniqueTargetFrameIds.length === 0) {
+      addToast("❌ Không còn frame hợp lệ để Auto Color. Hãy chọn frame khác reference.", "error", 6000);
       return;
     }
 
     try {
       setIsColoring(true);
-      addToast("⏳ Đang tạo colorization job...", "info", 5000);
+      addToast("⏳ Đang tạo Auto Color Sequence job...", "info", 5000);
 
       const started = await startColorizationJob({
         projectId,
         referenceFrameId: referenceImage.id,
+        targetFrameIds: uniqueTargetFrameIds,
+        direction: "both",
       });
 
-      const continued = await continueColorizationJob({
-        projectId,
-        jobId: started.job.id,
-      });
+      let jobId = started.job.id;
+      let lastStatus = started.job.status;
+      let lastReviewFrameId: string | null = null;
+      let totalProcessed = 0;
+      const maxIterations = Math.max(uniqueTargetFrameIds.length + 3, 6);
 
-      if (continued.frame_id) {
-        const reviewIndex = uncoloredFiles.findIndex((frame) => frame.id === continued.frame_id);
-        if (reviewIndex >= 0) {
-          handleFrameChange(reviewIndex);
+      for (let step = 0; step < maxIterations; step += 1) {
+        const continued = await continueColorizationJob({
+          projectId,
+          jobId,
+          maxSteps: 1,
+        });
+
+        jobId = continued.job.id;
+        lastStatus = continued.status;
+        totalProcessed += Number(continued.processed_count || 0);
+
+        const latestFrames = await refreshFrames();
+
+        if (continued.frame_id) {
+          const changedIndex = latestFrames.findIndex((frame) => frame.id === continued.frame_id);
+          if (changedIndex >= 0) {
+            setFrameStates((prev) => {
+              const next = [...prev];
+              next[changedIndex] = "ai";
+              return next;
+            });
+          }
+        }
+
+        if (continued.status === "needs_review_not_reference" || continued.status === "waiting_review") {
+          lastReviewFrameId = continued.frame_id || continued.job.current_review_frame_id || null;
+          if (lastReviewFrameId) {
+            const reviewIndex = latestFrames.findIndex((frame) => frame.id === lastReviewFrameId);
+            if (reviewIndex >= 0) handleFrameChange(reviewIndex);
+          }
+          break;
+        }
+
+        if (continued.status === "completed") {
+          break;
         }
       }
 
-      if (continued.status === "needs_review_not_reference") {
-        addToast("⚠️ Frame không chắc. Mở Review/Correction trong RightPanel.", "info", 7000);
-      } else if (continued.status === "completed") {
-        addToast("✅ Sequence đã hoàn thành", "success");
+      await refreshFrames();
+
+      if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
+        addToast("⚠️ Auto Color tạm dừng vì có frame cần Review/Correction.", "info", 8000);
+      } else if (lastStatus === "completed") {
+        addToast(`✅ Auto Color Sequence hoàn thành (${totalProcessed} frame)`, "success", 7000);
       } else {
-        addToast("✅ Core colorization job đã bắt đầu", "success");
+        addToast(`✅ Auto Color đã xử lý ${totalProcessed} frame.`, "success", 6000);
       }
     } catch (error) {
       console.error("AUTO COLOR CORE ERROR:", error);
-      addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 7000);
+      addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 8000);
     } finally {
       setIsColoring(false);
     }
@@ -513,7 +530,6 @@ const handleCustomColoredUpload = async (
       ...currentFrame,
       name: file.name,
       paintUrl: coloredUrl,
-      url: coloredUrl,
     };
 
     setUncoloredFiles((prev) =>
@@ -521,6 +537,11 @@ const handleCustomColoredUpload = async (
         index === activeFrame ? { ...item, paintUrl: coloredUrl } : item,
       ),
     );
+    setFrameStates((prev) => {
+      const next = [...prev];
+      next[activeFrame] = "manual";
+      return next;
+    });
 
     setReferenceImage(savedReference);
     setFrameRefMap((prev) => ({ ...prev, [activeFrame]: savedReference }));
@@ -537,7 +558,15 @@ const handleCustomColoredUpload = async (
   // ── Reference handlers ─────────────────────────────────────────────────────
   const handleConfirmReference = () => {
     const found = uncoloredFiles.find((f) => f.id === selectedRefId);
-    if (found) setReferenceImage(found);
+    if (!found) {
+      addToast("❌ Không tìm thấy reference frame", "error");
+      return;
+    }
+    if (!found.paintUrl) {
+      addToast("❌ Frame này chưa có ảnh màu. Chỉ colored keyframe mới dùng làm reference được.", "error", 6000);
+      return;
+    }
+    setReferenceImage(found);
     setShowReferenceModal(false);
   };
 
@@ -554,9 +583,11 @@ const handleCustomColoredUpload = async (
 
   const handleSetFrameAsGlobalRef = (fi: number) => {
     const f = uncoloredFiles[fi];
-    if (f) {
+    if (f?.paintUrl) {
       setReferenceImage(f);
       setFrameRefMap((p) => ({ ...p, [fi]: f }));
+    } else {
+      addToast("❌ Frame này chưa có ảnh màu nên chưa thể đặt làm global reference", "error", 6000);
     }
     setContextMenu(null);
   };
@@ -686,8 +717,8 @@ const handleCustomColoredUpload = async (
       
       addToast("⏳ Đang xuất frame...", "info", 5000);
       
-      // Lấy hình ảnh đã tô màu nếu có, nếu không lấy hình gốc
-      const paintedUrl = uncoloredFiles[frameIndex]?.paintUrl || uncoloredFiles[frameIndex]?.url;
+      // Lấy ảnh màu đang hiển thị nếu có, sau đó mới fallback về ảnh màu đã lưu hoặc sketch gốc
+      const paintedUrl = framePaints[frameIndex] || uncoloredFiles[frameIndex]?.paintUrl || uncoloredFiles[frameIndex]?.url;
       
       console.log("🖼️ paintedUrl:", paintedUrl);
       
@@ -847,6 +878,7 @@ const handleCustomColoredUpload = async (
     frameRefMap,
     contextMenu, setContextMenu,
     undoStack, redoStack,
+    framePaints,
 
     // Tool state
     activeTool, setActiveTool,
@@ -924,5 +956,6 @@ const handleCustomColoredUpload = async (
     toasts,
     removeToast,
     addToast,
+    refreshFrames,
   };
 }

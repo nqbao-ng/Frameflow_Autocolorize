@@ -14,7 +14,7 @@ interface LeftSidebarProps {
 
 export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
   const {
-    uncoloredFiles, activeFrame, frameStates, frameRefMap,
+    uncoloredFiles, activeFrame, frameStates, frameRefMap, framePaints,
     referenceImage, setReferenceImage,
     uncoloredInputRef, customColoredInputRef,
     handleFrameChange, setContextMenu,
@@ -91,7 +91,7 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                     transition: "all 0.1s",
                   }}
                 >
-                  <img src={file.url} alt={file.name} style={{ width: "100%", height: 48, objectFit: "cover", display: "block" }} />
+                  <img src={framePaints[i] || file.paintUrl || file.url} alt={file.name} style={{ width: "100%", height: 48, objectFit: "cover", display: "block" }} />
                   <div style={{ position: "absolute", top: 3, left: 3, background: "rgba(0,0,0,0.55)", borderRadius: 3, padding: "1px 4px" }}>
                     <span style={{ fontSize: 8, fontWeight: 700, color: "white" }}>{i + 1}</span>
                   </div>
@@ -101,7 +101,7 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                   {frameRefMap[i] && (
                     <div style={{ position: "absolute", bottom: 3, left: 3, display: "flex", alignItems: "center", gap: 2, background: "rgba(245,158,11,0.92)", borderRadius: 3, padding: "1px 3px", border: "1px solid rgba(255,255,255,0.8)" }}>
                       <Star size={6} color="white" fill="white" />
-                      <img src={frameRefMap[i].url} alt="ref" style={{ width: 10, height: 10, borderRadius: 2, objectFit: "cover" }} />
+                      <img src={frameRefMap[i].paintUrl || frameRefMap[i].url} alt="ref" style={{ width: 10, height: 10, borderRadius: 2, objectFit: "cover" }} />
                     </div>
                   )}
                   <div style={{ background: isActive ? "#EFF6FF" : "#F8FAFF", padding: "2px 4px", borderTop: "1px solid #F1F5F9" }}>
@@ -139,7 +139,7 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
           }}
         >
           {referenceImage ? (
-            <img src={referenceImage.url} alt="ref" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover", flexShrink: 0, border: "1px solid #BFDBFE" }} />
+            <img src={referenceImage.paintUrl || referenceImage.url} alt="ref" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover", flexShrink: 0, border: "1px solid #BFDBFE" }} />
           ) : (
             <div style={{ width: 22, height: 22, borderRadius: 5, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <ImageIcon size={11} color="#64748B" />

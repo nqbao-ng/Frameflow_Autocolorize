@@ -328,7 +328,8 @@ def analyze_line_rgb(rgb: np.ndarray, cfg: AnalyzeSettings, frame_name: str = "f
     segments: List[Segment] = []
     for sid in range(1, num):
         area = int(stats[sid, cv2.CC_STAT_AREA])
-        if area <= 0:
+        if area < max(1, int(cfg.min_segment_area)):
+            labels[labels == sid] = 0
             continue
         x = int(stats[sid, cv2.CC_STAT_LEFT])
         y = int(stats[sid, cv2.CC_STAT_TOP])

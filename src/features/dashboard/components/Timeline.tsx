@@ -15,7 +15,7 @@ export function Timeline({ ctx }: TimelineProps) {
     isPlaying, setIsPlaying,
     speed, setSpeed,
     showSpeedMenu, setShowSpeedMenu,
-    activeFrame, frameStates, frameRefMap,
+    activeFrame, frameStates, frameRefMap, framePaints,
     uncoloredFiles, timelineScrollRef,
     handleFrameChange, setContextMenu,
     paintableFrames, toggleFramePaintable,
@@ -106,14 +106,14 @@ export function Timeline({ ctx }: TimelineProps) {
                      transition: "all 0.1s",
                    }}
                  >
-                   <img src={file.url} alt={file.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                   <img src={framePaints[i] || file.paintUrl || file.url} alt={file.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
                    {state !== "plain" && (
                      <div style={{ position: "absolute", top: 2, right: 2, width: 5, height: 5, borderRadius: "50%", background: state === "ai" ? "#8B5CF6" : "#F59E0B", border: "1.5px solid white" }} />
                    )}
                    {frameRefMap[i] && (
                      <div style={{ position: "absolute", bottom: 2, left: 2, display: "flex", alignItems: "center", gap: 1, background: "rgba(245,158,11,0.9)", borderRadius: 2, padding: "1px 3px", border: "1px solid white" }}>
                        <Star size={6} color="white" fill="white" />
-                       <img src={frameRefMap[i].url} alt="ref" style={{ width: 10, height: 10, borderRadius: 1, objectFit: "cover" }} />
+                       <img src={frameRefMap[i].paintUrl || frameRefMap[i].url} alt="ref" style={{ width: 10, height: 10, borderRadius: 1, objectFit: "cover" }} />
                      </div>
                    )}
                  </button>

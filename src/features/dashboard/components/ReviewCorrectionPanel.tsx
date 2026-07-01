@@ -83,6 +83,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
     handleSaveCurrentFrame,
     handleFrameChange,
     addToast,
+    refreshFrames,
   } = ctx;
 
   const currentFrame = uncoloredFiles[activeFrame];
@@ -240,13 +241,27 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         ],
       });
 
-      const next = await continueColorizationJob({
+      let next = await continueColorizationJob({
         projectId,
         jobId: applied.job.id,
+        maxSteps: 1,
       });
 
+      for (let step = 0; step < uncoloredFiles.length + 2; step += 1) {
+        if (next.status === "needs_review_not_reference" || next.status === "waiting_review" || next.status === "completed") {
+          break;
+        }
+        next = await continueColorizationJob({
+          projectId,
+          jobId: applied.job.id,
+          maxSteps: 1,
+        });
+      }
+
+      const latestFrames = await refreshFrames();
+
       if (next.frame_id) {
-        const nextIndex = uncoloredFiles.findIndex((frame) => frame.id === next.frame_id);
+        const nextIndex = latestFrames.findIndex((frame) => frame.id === next.frame_id);
         if (nextIndex >= 0) handleFrameChange(nextIndex);
       }
 

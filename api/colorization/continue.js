@@ -15,11 +15,33 @@ import {
   uploadBase64Asset,
 } from './_shared.js';
 
-async function findNextPendingJobFrame(supabase, jobId, nextIndex) {
+async function findNextPendingJobFrame(supabase, job, nextIndex) {
+  const processingFrameIds = Array.isArray(job.settings?.processing_frame_ids)
+    ? job.settings.processing_frame_ids.map(String)
+    : [];
+
+  if (processingFrameIds.length) {
+    const startCursor = Math.max(0, Number(nextIndex ?? 0));
+    for (let cursor = startCursor; cursor < processingFrameIds.length; cursor += 1) {
+      const frameId = processingFrameIds[cursor];
+      const { data, error } = await supabase
+        .from('colorization_job_frames')
+        .select('*')
+        .eq('job_id', job.id)
+        .eq('frame_id', frameId)
+        .eq('pipeline_status', FRAME_PIPELINE_STATUS.PENDING)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) return { ...data, _order_cursor: cursor };
+    }
+    return null;
+  }
+
   const { data, error } = await supabase
     .from('colorization_job_frames')
     .select('*')
-    .eq('job_id', jobId)
+    .eq('job_id', job.id)
     .gte('frame_index', Number(nextIndex ?? 0))
     .eq('pipeline_status', FRAME_PIPELINE_STATUS.PENDING)
     .order('frame_index', { ascending: true })
@@ -28,6 +50,41 @@ async function findNextPendingJobFrame(supabase, jobId, nextIndex) {
 
   if (error) throw error;
   return data;
+}
+
+async function resolveReferenceFrame(supabase, job, targetJobFrame) {
+  const referenceFrameId = job.settings?.reference_frame_id || job.last_trusted_frame_id;
+  const referenceIndex = Number(job.settings?.reference_frame_index ?? NaN);
+  const targetIndex = Number(targetJobFrame.frame_index ?? 0);
+
+  if (job.settings?.reference_strategy === 'nearest_colored_neighbor' && Number.isFinite(referenceIndex)) {
+    let query = supabase
+      .from('colorization_job_frames')
+      .select('frame_id,frame_index,pipeline_status,colorized_url')
+      .eq('job_id', job.id)
+      .not('colorized_url', 'is', null);
+
+    if (targetIndex > referenceIndex) {
+      query = query.lt('frame_index', targetIndex).order('frame_index', { ascending: false });
+    } else if (targetIndex < referenceIndex) {
+      query = query.gt('frame_index', targetIndex).order('frame_index', { ascending: true });
+    } else {
+      query = query.eq('frame_id', referenceFrameId);
+    }
+
+    const { data, error } = await query.limit(1).maybeSingle();
+    if (error) throw error;
+    if (data?.frame_id) {
+      const nearest = await getFrameById(supabase, data.frame_id);
+      if (nearest?.source_image_url && nearest?.colored_image_url) return nearest;
+    }
+  }
+
+  const fallback = await getFrameById(supabase, job.last_trusted_frame_id || referenceFrameId);
+  if (fallback?.source_image_url && fallback?.colored_image_url) return fallback;
+
+  const originalReference = await getFrameById(supabase, referenceFrameId);
+  return originalReference;
 }
 
 async function completeJob(supabase, jobId) {
@@ -46,7 +103,7 @@ async function completeJob(supabase, jobId) {
 }
 
 async function processOneFrame({ supabase, projectId, job }) {
-  const nextFrame = await findNextPendingJobFrame(supabase, job.id, job.next_frame_index);
+  const nextFrame = await findNextPendingJobFrame(supabase, job, job.next_frame_index);
 
   if (!nextFrame) {
     const completedJob = await completeJob(supabase, job.id);
@@ -61,8 +118,8 @@ async function processOneFrame({ supabase, projectId, job }) {
   const frameRecord = await getFrameById(supabase, nextFrame.frame_id);
   if (!frameRecord) throw new Error(`Frame not found: ${nextFrame.frame_id}`);
 
-  const referenceFrame = await getFrameById(supabase, job.last_trusted_frame_id);
-  if (!referenceFrame) throw new Error('Missing last trusted reference frame. Upload/select a colored keyframe first.');
+  const referenceFrame = await resolveReferenceFrame(supabase, job, nextFrame);
+  if (!referenceFrame) throw new Error('Missing trusted reference frame. Upload/select a colored keyframe first.');
 
   const sourceImageUrl = frameRecord.source_image_url || frameRecord.colored_image_url;
   const referenceLineUrl = referenceFrame.source_image_url;
@@ -171,18 +228,23 @@ async function processOneFrame({ supabase, projectId, job }) {
 
   if (updateRealFrameError) throw updateRealFrameError;
 
-  const nextFrameIndex = Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0) + 1;
+  const nextCursor = nextFrame._order_cursor != null
+    ? Number(nextFrame._order_cursor) + 1
+    : Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0) + 1;
+  const currentCursor = nextFrame._order_cursor != null
+    ? Number(nextFrame._order_cursor)
+    : Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0);
   const jobUpdate = needsReview
     ? {
         status: JOB_STATUS.WAITING_REVIEW,
         current_review_frame_id: frameRecord.id,
-        next_frame_index: Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0),
+        next_frame_index: currentCursor,
       }
     : {
         status: JOB_STATUS.RUNNING,
         current_review_frame_id: null,
         last_trusted_frame_id: frameRecord.id,
-        next_frame_index: nextFrameIndex,
+        next_frame_index: nextCursor,
       };
 
   const { data: updatedJob, error: updateJobError } = await supabase

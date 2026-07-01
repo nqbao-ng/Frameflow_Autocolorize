@@ -12,11 +12,9 @@ interface ContextMenuProps {
 export function ContextMenu({ ctx }: ContextMenuProps) {
   const {
     contextMenu, setContextMenu,
-    uncoloredFiles, frameStates, frameRefMap,
+    uncoloredFiles, frameStates, frameRefMap, framePaints,
     referenceImage,
     handleSetFrameRef, handleSetFrameAsGlobalRef, handleClearFrameRef,
-    setFrameStates,
-    paintableFrames,
     deleteFrame,
     addToast,
   } = ctx;
@@ -31,14 +29,7 @@ export function ContextMenu({ ctx }: ContextMenuProps) {
       addToast("❌ Vui lòng chọn ảnh tham chiếu trước!", "error");
       return;
     }
-    // Validation: check if frame is selected to paint
-    if (paintableFrames.size === 0) {
-      addToast("❌ Vui lòng chọn frame cần tô màu!", "error");
-      return;
-    }
-    const idx = contextMenu.frameIndex;
-    setFrameStates((prev) => { const n = [...prev]; n[idx] = "ai"; return n; });
-    addToast("⏳ Đang tô màu frame...", "info", 5000);
+    addToast("ℹ️ AI Color This Frame đang tạm khóa. Hoàn thành Auto Color Sequence trước, rồi mở rộng tính năng này sau.", "info", 6000);
     setContextMenu(null);
   };
 
@@ -57,7 +48,7 @@ export function ContextMenu({ ctx }: ContextMenuProps) {
         <div style={{ padding: "9px 13px 7px", borderBottom: "1px solid #F1F5F9" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
             {uncoloredFiles[contextMenu.frameIndex] && (
-              <img src={uncoloredFiles[contextMenu.frameIndex].url} alt="" style={{ width: 20, height: 20, borderRadius: 3, objectFit: "cover", border: "1px solid #E2E8F0" }} />
+              <img src={framePaints[contextMenu.frameIndex] || uncoloredFiles[contextMenu.frameIndex].paintUrl || uncoloredFiles[contextMenu.frameIndex].url} alt="" style={{ width: 20, height: 20, borderRadius: 3, objectFit: "cover", border: "1px solid #E2E8F0" }} />
             )}
             <span style={{ fontSize: 11, fontWeight: 700, color: "#1E293B" }}>Frame {contextMenu.frameIndex + 1}</span>
             {frameStates[contextMenu.frameIndex] === "ai" && (
@@ -77,7 +68,7 @@ export function ContextMenu({ ctx }: ContextMenuProps) {
               style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", padding: "8px 13px", border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "'Inter',sans-serif" }}
             >
               <div style={{ width: 26, height: 26, borderRadius: 5, overflow: "hidden", flexShrink: 0, border: "1.5px solid #E2E8F0" }}>
-                <img src={referenceImage.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <img src={referenceImage.paintUrl || referenceImage.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: "#1E293B" }}>Assign Current Ref</div>

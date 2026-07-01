@@ -98,6 +98,8 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 export async function startColorizationJob(input: {
   projectId: string;
   referenceFrameId?: string | null;
+  targetFrameIds?: string[];
+  direction?: "forward" | "backward" | "both";
 }) {
   return requestJson<{
     ok: boolean;
@@ -128,6 +130,7 @@ export async function getColorizationState(input: {
 export async function continueColorizationJob(input: {
   projectId: string;
   jobId?: string | null;
+  maxSteps?: number;
 }) {
   return requestJson<{
     ok: boolean;
@@ -135,6 +138,10 @@ export async function continueColorizationJob(input: {
     job: ColorizationJob;
     job_frame?: ColorizationJobFrame;
     frame_id?: string;
+    result_url?: string;
+    overlay_url?: string;
+    processed_count?: number;
+    processed?: Array<Record<string, unknown>>;
     message: string;
   }>("/api/colorization/continue", {
     method: "POST",

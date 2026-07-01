@@ -135,7 +135,15 @@ export default async function handler(req, res) {
 
     if (updateJobFrameError) throw updateJobFrameError;
 
-    const nextFrameIndex = Number(updatedJobFrame.frame_index ?? frame.frame_index ?? 0) + 1;
+    const processingFrameIds = Array.isArray(job.settings?.processing_frame_ids)
+      ? job.settings.processing_frame_ids.map(String)
+      : [];
+    const currentCursor = processingFrameIds.length
+      ? processingFrameIds.indexOf(String(frameId))
+      : -1;
+    const nextFrameIndex = currentCursor >= 0
+      ? currentCursor + 1
+      : Number(updatedJobFrame.frame_index ?? frame.frame_index ?? 0) + 1;
 
     const { data: updatedJob, error: updateJobError } = await supabase
       .from('colorization_jobs')
