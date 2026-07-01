@@ -116,24 +116,37 @@ export default async function handler(req, res) {
 
     if (updateFrameError) throw updateFrameError;
 
-    const { data: updatedJobFrame, error: updateJobFrameError } = await supabase
+    const { data: existingJobFrame, error: existingJobFrameError } = await supabase
       .from('colorization_job_frames')
-      .update({
-        pipeline_status: FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME,
-        colorized_url: finalResultUrl,
-        confidence_summary: {
-          status: 'user_corrected',
-          correction_id: correctionRow.id,
-          corrections,
-          confidence_score: 1.0,
-        },
-      })
+      .select('*')
       .eq('job_id', job.id)
       .eq('frame_id', frameId)
-      .select('*')
-      .single();
+      .maybeSingle();
 
-    if (updateJobFrameError) throw updateJobFrameError;
+    if (existingJobFrameError) throw existingJobFrameError;
+
+    let updatedJobFrame = existingJobFrame;
+
+    if (existingJobFrame) {
+      const { data, error } = await supabase
+        .from('colorization_job_frames')
+        .update({
+          pipeline_status: FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME,
+          colorized_url: finalResultUrl,
+          confidence_summary: {
+            status: 'user_corrected',
+            correction_id: correctionRow.id,
+            corrections,
+            confidence_score: 1.0,
+          },
+        })
+        .eq('id', existingJobFrame.id)
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      updatedJobFrame = data;
+    }
 
     const processingFrameIds = Array.isArray(job.settings?.processing_frame_ids)
       ? job.settings.processing_frame_ids.map(String)
@@ -143,7 +156,7 @@ export default async function handler(req, res) {
       : -1;
     const nextFrameIndex = currentCursor >= 0
       ? currentCursor + 1
-      : Number(updatedJobFrame.frame_index ?? frame.frame_index ?? 0) + 1;
+      : Number(updatedJobFrame?.frame_index ?? frame.frame_index ?? 0) + 1;
 
     const { data: updatedJob, error: updateJobError } = await supabase
       .from('colorization_jobs')
@@ -163,7 +176,7 @@ export default async function handler(req, res) {
       ok: true,
       status: FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME,
       job: updatedJob,
-      job_frame: updatedJobFrame,
+      job_frame: updatedJobFrame || { frame_id: frameId, pipeline_status: FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME },
       correction: correctionRow,
       result_url: finalResultUrl,
       message: 'Correction saved. This frame is now the latest correction keyframe.',

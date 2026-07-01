@@ -57,27 +57,28 @@ async function resolveReferenceFrame(supabase, job, targetJobFrame) {
   const referenceIndex = Number(job.settings?.reference_frame_index ?? NaN);
   const targetIndex = Number(targetJobFrame.frame_index ?? 0);
 
+  // Product rule:
+  // target sketch luôn dùng source_image_url gốc.
+  // reference luôn là colored frame gần nhất đã có colored_image_url.
+  // Với forward propagation: Frame 5 lấy Frame 4 đã tô, nếu có.
   if (job.settings?.reference_strategy === 'nearest_colored_neighbor' && Number.isFinite(referenceIndex)) {
     let query = supabase
-      .from('colorization_job_frames')
-      .select('frame_id,frame_index,pipeline_status,colorized_url')
-      .eq('job_id', job.id)
-      .not('colorized_url', 'is', null);
+      .from('frames')
+      .select('*')
+      .eq('project_id', job.project_id)
+      .not('colored_image_url', 'is', null);
 
     if (targetIndex > referenceIndex) {
       query = query.lt('frame_index', targetIndex).order('frame_index', { ascending: false });
     } else if (targetIndex < referenceIndex) {
       query = query.gt('frame_index', targetIndex).order('frame_index', { ascending: true });
     } else {
-      query = query.eq('frame_id', referenceFrameId);
+      query = query.eq('id', referenceFrameId);
     }
 
     const { data, error } = await query.limit(1).maybeSingle();
     if (error) throw error;
-    if (data?.frame_id) {
-      const nearest = await getFrameById(supabase, data.frame_id);
-      if (nearest?.source_image_url && nearest?.colored_image_url) return nearest;
-    }
+    if (data?.source_image_url && data?.colored_image_url) return data;
   }
 
   const fallback = await getFrameById(supabase, job.last_trusted_frame_id || referenceFrameId);
@@ -121,7 +122,7 @@ async function processOneFrame({ supabase, projectId, job }) {
   const referenceFrame = await resolveReferenceFrame(supabase, job, nextFrame);
   if (!referenceFrame) throw new Error('Missing trusted reference frame. Upload/select a colored keyframe first.');
 
-  const sourceImageUrl = frameRecord.source_image_url || frameRecord.colored_image_url;
+  const sourceImageUrl = frameRecord.source_image_url;
   const referenceLineUrl = referenceFrame.source_image_url;
   const referenceColorUrl = referenceFrame.colored_image_url;
 

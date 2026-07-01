@@ -15,7 +15,7 @@ export function Timeline({ ctx }: TimelineProps) {
     isPlaying, setIsPlaying,
     speed, setSpeed,
     showSpeedMenu, setShowSpeedMenu,
-    activeFrame, frameStates, frameRefMap, framePaints,
+    activeFrame, frameStates, frameRefMap, framePaints, referenceImage,
     uncoloredFiles, timelineScrollRef,
     handleFrameChange, setContextMenu,
     paintableFrames, toggleFramePaintable,
@@ -90,7 +90,11 @@ export function Timeline({ ctx }: TimelineProps) {
          <div style={{ display: "flex", gap: 5, marginTop: 3, marginBottom: 3, alignItems: "flex-start" }}>
            {uncoloredFiles.map((file, i) => {
              const isActive = activeFrame === i;
-             const isPaintable = paintableFrames.has(i);
+             const referenceIndex = referenceImage?.id
+               ? uncoloredFiles.findIndex((frame) => frame.id === referenceImage.id)
+               : -1;
+             const isBeforeOrReference = referenceIndex >= 0 && i <= referenceIndex;
+             const isPaintable = paintableFrames.has(i) && !isBeforeOrReference;
              const state = frameStates[i] ?? "plain";
              return (
                <div key={file.id} style={{ position: "relative" }}>
@@ -121,14 +125,19 @@ export function Timeline({ ctx }: TimelineProps) {
                  <input
                    type="checkbox"
                    checked={isPaintable}
-                   onChange={() => toggleFramePaintable(i)}
+                   disabled={isBeforeOrReference}
+                   title={isBeforeOrReference ? "Reference và frame trước nó không được tô lại trong forward propagation" : "Select this frame for Auto Color"}
+                   onChange={() => {
+                     if (!isBeforeOrReference) toggleFramePaintable(i);
+                   }}
                    style={{
                      position: "absolute",
                      bottom: 3,
                      right: 3,
                      width: 14,
                      height: 14,
-                     cursor: "pointer",
+                     cursor: isBeforeOrReference ? "not-allowed" : "pointer",
+                     opacity: isBeforeOrReference ? 0.45 : 1,
                      accentColor: "#3B82F6",
                    }}
                  />

@@ -78,21 +78,43 @@ export type CorrectionItem = {
 const API_BASE = import.meta.env.VITE_BACKEND_API_BASE_URL || "";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 120000);
 
-  const data = await res.json().catch(() => null);
+  try {
+    const res = await fetch(`${API_BASE}${url}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers || {}),
+      },
+    });
 
-  if (!res.ok || data?.ok === false) {
-    throw new Error(data?.error || data?.details || `Request failed: ${res.status}`);
+    const data = await res.json().catch(() => null);
+
+    if (!res.ok || data?.ok === false) {
+      const message =
+        data?.details ||
+        data?.detail ||
+        data?.error ||
+        `Request failed: ${res.status}`;
+
+      throw new Error(
+        typeof message === "string" ? message : JSON.stringify(message),
+      );
+    }
+
+    return data as T;
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      throw new Error("Request timeout: backend xử lý quá lâu hoặc API bị treo.");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-
-  return data as T;
 }
 
 export async function startColorizationJob(input: {
@@ -100,6 +122,7 @@ export async function startColorizationJob(input: {
   referenceFrameId?: string | null;
   targetFrameIds?: string[];
   direction?: "forward" | "backward" | "both";
+  overwriteExisting?: boolean;
 }) {
   return requestJson<{
     ok: boolean;

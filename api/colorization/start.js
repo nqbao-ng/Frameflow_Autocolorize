@@ -9,6 +9,67 @@ import {
   sendJson,
 } from './_shared.js';
 
+function frameIndex(frame) {
+  return Number(frame?.frame_index ?? 0);
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((values || []).map(String).filter(Boolean)));
+}
+
+function buildForwardChainTargets(frames, referenceFrame, targetFrameIds) {
+  const referenceIndex = frameIndex(referenceFrame);
+  const targetIdSet = new Set(targetFrameIds);
+
+  // Nếu client truyền frame rời rạc, server vẫn mở rộng thành chain liên tục.
+  // Ví dụ reference=3, target=7 => chạy 4,5,6,7.
+  if (targetIdSet.size > 0) {
+    const selectedAfterReference = frames.filter(
+      (frame) => targetIdSet.has(String(frame.id)) && frameIndex(frame) > referenceIndex,
+    );
+
+    if (!selectedAfterReference.length) return [];
+
+    const maxTargetIndex = Math.max(...selectedAfterReference.map(frameIndex));
+
+    return frames
+      .filter((frame) => frame.id !== referenceFrame.id)
+      .filter((frame) => frameIndex(frame) > referenceIndex && frameIndex(frame) <= maxTargetIndex)
+      .sort((a, b) => frameIndex(a) - frameIndex(b));
+  }
+
+  // Nếu không truyền target cụ thể, mặc định chạy toàn bộ frame sau reference.
+  return frames
+    .filter((frame) => frame.id !== referenceFrame.id)
+    .filter((frame) => frameIndex(frame) > referenceIndex)
+    .sort((a, b) => frameIndex(a) - frameIndex(b));
+}
+
+function buildBackwardChainTargets(frames, referenceFrame, targetFrameIds) {
+  const referenceIndex = frameIndex(referenceFrame);
+  const targetIdSet = new Set(targetFrameIds);
+
+  if (targetIdSet.size > 0) {
+    const selectedBeforeReference = frames.filter(
+      (frame) => targetIdSet.has(String(frame.id)) && frameIndex(frame) < referenceIndex,
+    );
+
+    if (!selectedBeforeReference.length) return [];
+
+    const minTargetIndex = Math.min(...selectedBeforeReference.map(frameIndex));
+
+    return frames
+      .filter((frame) => frame.id !== referenceFrame.id)
+      .filter((frame) => frameIndex(frame) < referenceIndex && frameIndex(frame) >= minTargetIndex)
+      .sort((a, b) => frameIndex(b) - frameIndex(a));
+  }
+
+  return frames
+    .filter((frame) => frame.id !== referenceFrame.id)
+    .filter((frame) => frameIndex(frame) < referenceIndex)
+    .sort((a, b) => frameIndex(b) - frameIndex(a));
+}
+
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['POST'])) return;
 
@@ -16,13 +77,11 @@ export default async function handler(req, res) {
     const body = await readJsonBody(req);
     const projectId = body.projectId || body.project_id;
     const referenceFrameId = body.referenceFrameId || body.reference_frame_id || null;
-    const rawTargetFrameIds = body.targetFrameIds || body.target_frame_ids || [];
-    const targetFrameIds = Array.isArray(rawTargetFrameIds)
-      ? Array.from(new Set(rawTargetFrameIds.map(String)))
-      : [];
+    const targetFrameIds = uniqueStrings(body.targetFrameIds || body.target_frame_ids || []);
     const direction = ['forward', 'backward', 'both'].includes(body.direction)
       ? body.direction
-      : 'both';
+      : 'forward';
+    const overwriteExisting = body.overwriteExisting ?? body.overwrite_existing ?? true;
 
     if (!projectId) return sendError(res, 400, 'projectId is required');
 
@@ -34,11 +93,11 @@ export default async function handler(req, res) {
     }
 
     const referenceFrame = referenceFrameId
-      ? frames.find((frame) => frame.id === referenceFrameId)
+      ? frames.find((frame) => String(frame.id) === String(referenceFrameId))
       : frames.find((frame) => frame.colored_image_url);
 
     if (!referenceFrame) {
-      return sendError(res, 400, 'No colored reference/keyframe found. Upload a colored keyframe first.');
+      return sendError(res, 400, 'No colored reference/keyframe found. Upload or save a colored keyframe first.');
     }
 
     if (!referenceFrame.source_image_url) {
@@ -49,19 +108,10 @@ export default async function handler(req, res) {
       return sendError(res, 400, 'Reference frame must have colored_image_url. Save/import the colored keyframe first.');
     }
 
-    const referenceIndex = Number(referenceFrame.frame_index ?? 0);
-    const targetIdSet = new Set(targetFrameIds);
-    const baseCandidates = targetFrameIds.length
-      ? frames.filter((frame) => targetIdSet.has(String(frame.id)) && frame.id !== referenceFrame.id)
-      : frames.filter((frame) => frame.id !== referenceFrame.id);
+    const referenceIndex = frameIndex(referenceFrame);
 
-    const forwardTargets = baseCandidates
-      .filter((frame) => Number(frame.frame_index ?? 0) > referenceIndex)
-      .sort((a, b) => Number(a.frame_index ?? 0) - Number(b.frame_index ?? 0));
-
-    const backwardTargets = baseCandidates
-      .filter((frame) => Number(frame.frame_index ?? 0) < referenceIndex)
-      .sort((a, b) => Number(b.frame_index ?? 0) - Number(a.frame_index ?? 0));
+    const forwardTargets = buildForwardChainTargets(frames, referenceFrame, targetFrameIds);
+    const backwardTargets = buildBackwardChainTargets(frames, referenceFrame, targetFrameIds);
 
     const processingFrames = direction === 'forward'
       ? forwardTargets
@@ -69,11 +119,10 @@ export default async function handler(req, res) {
         ? backwardTargets
         : [...forwardTargets, ...backwardTargets];
 
-    const processingFrameIds = processingFrames.map((frame) => frame.id);
-    const processingIdSet = new Set(processingFrameIds);
+    const processingFrameIds = processingFrames.map((frame) => String(frame.id));
 
     if (!processingFrameIds.length) {
-      return sendError(res, 400, 'No target frames to colorize. Select frames on the timeline or choose another direction.');
+      return sendError(res, 400, 'No target frames after reference. Choose a reference earlier in the sequence or tick later frames.');
     }
 
     const { data: job, error: jobError } = await supabase
@@ -84,12 +133,13 @@ export default async function handler(req, res) {
         last_trusted_frame_id: referenceFrame.id,
         next_frame_index: 0,
         settings: {
-          mode: 'keyframe_guided_sequence',
+          mode: 'correction_keyframe_forward_propagation',
           reference_frame_id: referenceFrame.id,
           reference_frame_index: referenceIndex,
           target_frame_ids: processingFrameIds,
           processing_frame_ids: processingFrameIds,
           processing_direction: direction,
+          overwrite_existing: Boolean(overwriteExisting),
           reference_strategy: 'nearest_colored_neighbor',
           backend: 'frameflow_cv_service',
           ai_runtime: 'bedrock_vision_optional_for_suggestions_only',
@@ -106,7 +156,7 @@ export default async function handler(req, res) {
           use_flow: true,
           line_mode: 'original',
           max_low_confidence: 20,
-          created_from: 'FrameFlow RightPanel/Toolbar',
+          created_from: 'FrameFlow correction reference workflow',
         },
       })
       .select('*')
@@ -114,30 +164,40 @@ export default async function handler(req, res) {
 
     if (jobError) throw jobError;
 
-    const jobFramesPayload = frames.map((frame) => {
-      const frameIndex = Number(frame.frame_index ?? 0);
-      const isReference = frame.id === referenceFrame.id;
-      const shouldProcess = processingIdSet.has(frame.id);
-      return {
+    const jobFramesPayload = [
+      {
         job_id: job.id,
         project_id: projectId,
-        frame_id: frame.id,
-        frame_index: frameIndex,
-        frame_name: frame.name || `Frame ${frameIndex + 1}`,
-        pipeline_status: isReference
-          ? FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME
-          : shouldProcess
-            ? FRAME_PIPELINE_STATUS.PENDING
-            : (frame.colored_image_url ? FRAME_PIPELINE_STATUS.COLORIZED : FRAME_PIPELINE_STATUS.COMPLETED),
-        reference_used_frame_id: isReference ? null : referenceFrame.id,
-        colorized_url: frame.colored_image_url || null,
-        confidence_summary: isReference
-          ? { role: 'initial_colored_keyframe', confidence_score: 1, engine: 'user_reference' }
-          : shouldProcess
-            ? {}
-            : { skipped: true, reason: 'not_in_auto_color_target_set' },
-      };
-    });
+        frame_id: referenceFrame.id,
+        frame_index: referenceIndex,
+        frame_name: referenceFrame.name || `Frame ${referenceIndex + 1}`,
+        pipeline_status: FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME,
+        reference_used_frame_id: null,
+        colorized_url: referenceFrame.colored_image_url,
+        confidence_summary: {
+          role: 'correction_reference_keyframe',
+          confidence_score: 1,
+          engine: 'user_reference',
+        },
+      },
+      ...processingFrames.map((frame) => {
+        const idx = frameIndex(frame);
+        return {
+          job_id: job.id,
+          project_id: projectId,
+          frame_id: frame.id,
+          frame_index: idx,
+          frame_name: frame.name || `Frame ${idx + 1}`,
+          pipeline_status: FRAME_PIPELINE_STATUS.PENDING,
+          reference_used_frame_id: null,
+          colorized_url: null,
+          confidence_summary: {
+            pending: true,
+            overwrite_existing: Boolean(overwriteExisting),
+          },
+        };
+      }),
+    ];
 
     const { error: frameError } = await supabase
       .from('colorization_job_frames')
@@ -160,8 +220,10 @@ export default async function handler(req, res) {
       reference_frame: referenceFrame,
       total_frames: frames.length,
       target_frames: processingFrameIds.length,
+      target_frame_ids: processingFrameIds,
       direction,
-      message: 'FrameFlow CV job created. Call /api/colorization/continue to process selected frames until review/completion.',
+      overwrite_existing: Boolean(overwriteExisting),
+      message: 'FrameFlow CV job created for frames after the selected correction reference.',
     });
   } catch (error) {
     return sendError(res, 500, 'Failed to start colorization job', String(error?.message || error));

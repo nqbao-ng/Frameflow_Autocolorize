@@ -329,6 +329,31 @@ export function useDashboard() {
     setRecentColors((prev) => [c, ...prev.filter((x) => x !== c)].slice(0, 10));
   };
 
+  const buildForwardTargetIndices = (
+    referenceIndex: number,
+    selectedFrames: Set<number>,
+    totalFrames: number,
+  ): number[] => {
+    const selectedAfterReference = Array.from(selectedFrames)
+      .filter((index) => index > referenceIndex && index < totalFrames)
+      .sort((a, b) => a - b);
+
+    // Nếu user tick frame rời rạc, tự mở rộng thành chain liên tục.
+    // Ví dụ ref=3, user tick frame 7 => chạy 4,5,6,7.
+    if (selectedAfterReference.length > 0) {
+      const maxSelectedIndex = Math.max(...selectedAfterReference);
+
+      return Array.from({ length: totalFrames }, (_, index) => index).filter(
+        (index) => index > referenceIndex && index <= maxSelectedIndex,
+      );
+    }
+
+    // Nếu user không tick gì, mặc định chạy toàn bộ phía sau reference.
+    return Array.from({ length: totalFrames }, (_, index) => index).filter(
+      (index) => index > referenceIndex,
+    );
+  };
+
   // ── AI handlers ────────────────────────────────────────────────────────────
   const handleAutoColor = async () => {
     if (!projectId) {
@@ -342,42 +367,12 @@ export function useDashboard() {
     }
 
     if (!referenceImage?.id || !referenceImage.paintUrl) {
-      addToast("❌ Vui lòng chọn colored keyframe/reference đã có màu trước", "error");
+      addToast("❌ Vui lòng chọn colored/corrected keyframe làm Reference trước", "error");
       return;
     }
 
-    let effectiveReference = referenceImage;
-    const activeFrameRecord = uncoloredFiles[activeFrame];
-
-    // Nếu frame đang mở chính là reference và user vừa sửa tay trên canvas,
-    // cần lưu ảnh corrected lên Supabase trước khi start job mới.
-    if (activeFrameRecord?.id === referenceImage.id) {
-      const shouldSaveActiveReference =
-        framePaints[activeFrame] ||
-        frameStates[activeFrame] === "manual" ||
-        frameStates[activeFrame] === "ai";
-
-      if (shouldSaveActiveReference) {
-        addToast("⏳ Đang lưu frame hiện tại làm correction reference...", "info", 5000);
-
-        const savedUrl = await handleSaveCurrentFrame();
-
-        if (!savedUrl) {
-          addToast("❌ Chưa lưu được correction reference. Hãy đợi canvas load xong rồi thử lại.", "error", 7000);
-          return;
-        }
-
-        effectiveReference = {
-          ...activeFrameRecord,
-          paintUrl: savedUrl,
-        };
-
-        setReferenceImage(effectiveReference);
-      }
-    }
-
     const referenceIndex = uncoloredFiles.findIndex(
-      (frame) => frame.id === effectiveReference.id,
+      (frame) => frame.id === referenceImage.id,
     );
 
     if (referenceIndex < 0) {
@@ -385,57 +380,70 @@ export function useDashboard() {
       return;
     }
 
-    const selectedIndices = Array.from(paintableFrames)
-      .filter((index) => index >= 0 && index < uncoloredFiles.length)
-      .sort((a, b) => a - b);
+    let effectiveReference = referenceImage;
 
-    // Nếu user chưa tick frame nào, mặc định chỉ tô phía sau reference.
-    // Ví dụ chọn frame 3 làm ref => tự tô frame 4,5,6...
-    const candidateIndices =
-      selectedIndices.length > 0
-        ? selectedIndices
-        : uncoloredFiles
-            .map((_, index) => index)
-            .filter((index) => index > referenceIndex);
+    // Nếu user đang mở đúng reference và vừa sửa tay trên canvas,
+    // save lại thành correction keyframe trước khi tạo job mới.
+    if (activeFrame === referenceIndex) {
+      addToast("⏳ Đang lưu correction reference hiện tại...", "info", 5000);
+      const savedUrl = await handleSaveCurrentFrame();
 
-    const targetIndices = candidateIndices.filter(
-      (index) => uncoloredFiles[index]?.id && uncoloredFiles[index].id !== effectiveReference.id,
+      if (savedUrl) {
+        effectiveReference = {
+          ...referenceImage,
+          paintUrl: savedUrl,
+        };
+
+        setReferenceImage(effectiveReference);
+
+        setUncoloredFiles((prev) =>
+          prev.map((item, index) =>
+            index === referenceIndex ? { ...item, paintUrl: savedUrl } : item,
+          ),
+        );
+      }
+    }
+
+    const targetIndices = buildForwardTargetIndices(
+      referenceIndex,
+      paintableFrames,
+      uncoloredFiles.length,
     );
 
-    const targetFrameIds = targetIndices.map((index) => uncoloredFiles[index].id);
-    const uniqueTargetFrameIds = Array.from(new Set(targetFrameIds));
+    const targetFrameIds = Array.from(
+      new Set(
+        targetIndices
+          .map((index) => uncoloredFiles[index]?.id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
 
-    if (uniqueTargetFrameIds.length === 0) {
-      addToast(
-        "❌ Không có frame phía sau reference để Auto Color. Hãy tick frame muốn tô hoặc chọn reference sớm hơn.",
-        "error",
-        7000,
-      );
+    if (targetFrameIds.length === 0) {
+      addToast("❌ Không có frame phía sau reference để tô lại", "error", 7000);
       return;
     }
 
-    const hasForward = targetIndices.some((index) => index > referenceIndex);
-    const hasBackward = targetIndices.some((index) => index < referenceIndex);
-
-    const direction: "forward" | "backward" | "both" =
-      hasForward && hasBackward ? "both" : hasBackward ? "backward" : "forward";
-
     try {
       setIsColoring(true);
-      addToast("⏳ Đang tạo Auto Color Sequence job...", "info", 5000);
+      addToast(
+        `⏳ Auto Color ${targetFrameIds.length} frame phía sau Frame ${referenceIndex + 1}...`,
+        "info",
+        7000,
+      );
 
       const started = await startColorizationJob({
         projectId,
         referenceFrameId: effectiveReference.id,
-        targetFrameIds: uniqueTargetFrameIds,
-        direction,
+        targetFrameIds,
+        direction: "forward",
+        overwriteExisting: true,
       });
 
       let jobId = started.job.id;
       let lastStatus = started.job.status;
       let totalProcessed = 0;
-
-      const maxIterations = Math.max(uniqueTargetFrameIds.length + 3, 6);
+      let noProgressCount = 0;
+      const maxIterations = targetFrameIds.length + 3;
 
       for (let step = 0; step < maxIterations; step += 1) {
         const continued = await continueColorizationJob({
@@ -446,7 +454,9 @@ export function useDashboard() {
 
         jobId = continued.job.id;
         lastStatus = continued.status;
-        totalProcessed += Number(continued.processed_count || 0);
+
+        const processedNow = Number(continued.processed_count || 0);
+        totalProcessed += processedNow;
 
         const latestFrames = await refreshFrames();
 
@@ -487,20 +497,28 @@ export function useDashboard() {
         if (continued.status === "completed") {
           break;
         }
+
+        if (processedNow === 0) {
+          noProgressCount += 1;
+        } else {
+          noProgressCount = 0;
+        }
+
+        if (noProgressCount >= 2) {
+          throw new Error("Auto Color không có tiến triển. Kiểm tra /api/colorization/continue.");
+        }
       }
 
       await refreshFrames();
 
       if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
-        addToast("⚠️ Auto Color tạm dừng vì có frame cần Review/Correction.", "info", 8000);
-      } else if (lastStatus === "completed") {
-        addToast(`✅ Auto Color Sequence hoàn thành (${totalProcessed} frame)`, "success", 7000);
+        addToast("⚠️ Auto Color dừng ở frame cần Review/Correction", "info", 8000);
       } else {
-        addToast(`✅ Auto Color đã xử lý ${totalProcessed} frame.`, "success", 6000);
+        addToast(`✅ Đã tô lại ${totalProcessed} frame phía sau reference`, "success", 7000);
       }
     } catch (error) {
       console.error("AUTO COLOR CORE ERROR:", error);
-      addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 8000);
+      addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 10000);
     } finally {
       setIsColoring(false);
     }
@@ -654,14 +672,57 @@ const handleCustomColoredUpload = async (
     setContextMenu(null);
   };
 
-  const handleSetFrameAsGlobalRef = (fi: number) => {
-    const f = uncoloredFiles[fi];
-    if (f?.paintUrl) {
-      setReferenceImage(f);
-      setFrameRefMap((p) => ({ ...p, [fi]: f }));
-    } else {
-      addToast("❌ Frame này chưa có ảnh màu nên chưa thể đặt làm global reference", "error", 6000);
+  const handleSetFrameAsGlobalRef = async (fi: number) => {
+    const frame = uncoloredFiles[fi];
+
+    if (!frame) {
+      addToast("❌ Không tìm thấy frame", "error");
+      setContextMenu(null);
+      return;
     }
+
+    let savedPaintUrl = frame.paintUrl;
+
+    // Nếu đang mở frame này, lưu canvas hiện tại thành correction keyframe.
+    if (fi === activeFrame) {
+      addToast("⏳ Đang lưu correction keyframe...", "info", 5000);
+
+      const nextUrl = await handleSaveCurrentFrame();
+
+      if (!nextUrl) {
+        addToast("❌ Không lưu được correction keyframe. Hãy bấm Save rồi thử lại.", "error", 8000);
+        setContextMenu(null);
+        return;
+      }
+
+      savedPaintUrl = nextUrl;
+    }
+
+    if (!savedPaintUrl) {
+      addToast("❌ Frame này chưa có ảnh màu nên chưa thể làm reference", "error", 7000);
+      setContextMenu(null);
+      return;
+    }
+
+    const nextReference: ImportedFile = {
+      ...frame,
+      paintUrl: savedPaintUrl,
+    };
+
+    setReferenceImage(nextReference);
+
+    setUncoloredFiles((prev) =>
+      prev.map((item, index) =>
+        index === fi ? { ...item, paintUrl: savedPaintUrl } : item,
+      ),
+    );
+
+    setFrameRefMap((prev) => ({
+      ...prev,
+      [fi]: nextReference,
+    }));
+
+    addToast(`✅ Frame ${fi + 1} đã được đặt làm correction reference`, "success");
     setContextMenu(null);
   };
 
@@ -687,11 +748,22 @@ const handleCustomColoredUpload = async (
   };
 
   const selectAllFrames = () => {
-    const all = new Set<number>();
-    for (let i = 0; i < uncoloredFiles.length; i++) {
-      all.add(i);
+    const next = new Set<number>();
+
+    const referenceIndex = referenceImage?.id
+      ? uncoloredFiles.findIndex((frame) => frame.id === referenceImage.id)
+      : -1;
+
+    for (let i = 0; i < uncoloredFiles.length; i += 1) {
+      // Khi đã có reference, Select All chỉ chọn frame phía sau reference.
+      if (referenceIndex >= 0) {
+        if (i > referenceIndex) next.add(i);
+      } else {
+        next.add(i);
+      }
     }
-    setPaintableFrames(all);
+
+    setPaintableFrames(next);
   };
 
   const deselectAllFrames = () => {

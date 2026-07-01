@@ -201,8 +201,8 @@ export const CV_ENGINE_STATUS = {
 };
 
 export function getCvServiceConfig() {
-  const baseUrl = process.env.FRAMEFLOW_CV_API_URL || process.env.CV_API_URL;
-  const apiKey = process.env.FRAMEFLOW_CV_API_KEY || process.env.CV_API_KEY || '';
+  const baseUrl = String(process.env.FRAMEFLOW_CV_API_URL || process.env.CV_API_URL || '').trim();
+  const apiKey = String(process.env.FRAMEFLOW_CV_API_KEY || process.env.CV_API_KEY || '').trim();
 
   if (!baseUrl) {
     throw new Error('Missing FRAMEFLOW_CV_API_URL. Deploy backend_cv first, then set this env in Vercel.');
