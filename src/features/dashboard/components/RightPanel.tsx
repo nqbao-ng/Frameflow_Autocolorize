@@ -39,11 +39,10 @@ export function RightPanel({ ctx }: RightPanelProps) {
     blur, setBlur,
     spill, setSpill,
     tones, setTones,
-    handleColorCurrentFrame,
     handleAutoColor,
     referenceImage,
-    paintableFrames,
     addToast,
+    isColoring,
   } = ctx;
 
   const handleColorChange = (c: string) => {
@@ -98,12 +97,7 @@ export function RightPanel({ ctx }: RightPanelProps) {
                     addToast("❌ Vui lòng chọn ảnh tham chiếu trước!", "error");
                     return;
                   }
-                  if (paintableFrames.size === 0) {
-                    addToast("❌ Vui lòng chọn frame cần tô màu!", "error");
-                    return;
-                  }
-                  handleColorCurrentFrame();
-                  addToast("⏳ Đang tô màu frame...", "info", 5000);
+                  addToast("ℹ️ AI Color This Frame đang tạm khóa. Hoàn thành Auto Color Sequence trước, rồi mở rộng tính năng này sau.", "info", 6000);
                 }}
                 style={{ width: "100%", padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 2px 8px rgba(139,92,246,0.3)", fontFamily: "'Inter',sans-serif", marginBottom: 5 }}
               >
@@ -116,16 +110,12 @@ export function RightPanel({ ctx }: RightPanelProps) {
                       addToast("❌ Vui lòng chọn ảnh tham chiếu trước!", "error");
                       return;
                     }
-                    if (paintableFrames.size === 0) {
-                      addToast("❌ Vui lòng chọn frame cần tô màu!", "error");
-                      return;
-                    }
                     handleAutoColor();
-                    addToast("⏳ Đang tô màu tất cả frame...", "info", 5000);
                   }}
-                  style={{ width: "100%", padding: "7px", borderRadius: 8, border: "1.5px solid #E2E8F0", background: "white", color: "#3B82F6", fontWeight: 600, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "'Inter',sans-serif" }}
+                  disabled={isColoring}
+                  style={{ width: "100%", padding: "7px", borderRadius: 8, border: "1.5px solid #E2E8F0", background: "white", color: "#3B82F6", fontWeight: 600, fontSize: 11, cursor: isColoring ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "'Inter',sans-serif", opacity: isColoring ? 0.7 : 1 }}
                 >
-                  <Sparkles size={12} />Auto Color Sequence
+                  <Sparkles size={12} />{isColoring ? "Coloring Sequence..." : "Auto Color Sequence"}
                 </button>
             </div>
           )}

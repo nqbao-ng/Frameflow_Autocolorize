@@ -34,10 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 
-try:
-    import boto3
-except Exception:  # boto3 is optional until Bedrock is enabled
-    boto3 = None
+from vision_ai_service import bedrock_enabled, suggest_segment_role_color
 
 # -----------------------------------------------------------------------------
 # App / security
@@ -99,6 +96,8 @@ class AnalyzeSettings(BaseModel):
     max_low_confidence: int = 20
     min_review_area: int = 120
     min_review_area_ratio: float = 0.0005
+    use_role_memory: bool = True
+    role_memory_override_max_confidence: float = 0.55
 
 
 class RoleMemoryItem(BaseModel):
@@ -626,6 +625,7 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
         ref_colors = extract_keyframe_colors(ref_analysis, ref_color_rgb)
 
         colors, conf, match = propagate_colors(ref_analysis, ref_colors, curr_analysis, cfg)
+        apply_role_memory_hints(curr_analysis, colors, conf, match, req.role_memory, cfg)
         low_count = count_low_confidence(curr_analysis, conf, cfg)
         status = "colorized" if low_count <= int(cfg.max_low_confidence) else "needs_review_not_reference"
 
@@ -656,6 +656,7 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
                 "engine": "frameflow_cv_service",
                 "core": "opencv_connected_components_optical_flow_feature_matching",
                 "generation_api": "none",
+                "role_memory_used": bool(req.role_memory) and bool(cfg.use_role_memory),
             },
         }
     except HTTPException:
@@ -664,136 +665,46 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
         raise HTTPException(status_code=500, detail=f"CV colorization failed: {e}")
 
 # -----------------------------------------------------------------------------
-# Vision suggestion: Bedrock Nova optional, heuristic fallback always available
+# Vision suggestion: Amazon Bedrock Nova optional, heuristic fallback always available
 # -----------------------------------------------------------------------------
 
 
-def bedrock_enabled() -> bool:
-    return os.getenv("FRAMEFLOW_ENABLE_BEDROCK_VISION", "false").lower() == "true" and boto3 is not None
-
-
-def extract_json_object(text: str) -> Dict[str, Any]:
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except Exception:
-        pass
-    m = re.search(r"\{.*\}", text, flags=re.S)
-    if m:
-        return json.loads(m.group(0))
-    raise ValueError("No JSON object found in model response")
-
-
-def role_memory_color(role_memory: List[RoleMemoryItem], role: str, fallback: str = "#3B82F6") -> str:
-    candidates = [r for r in role_memory if r.role_id == role and r.locked_color]
-    if not candidates:
-        return fallback
-    candidates.sort(key=lambda r: r.priority, reverse=True)
-    return candidates[0].locked_color or fallback
-
-
-def heuristic_suggest(req: VisionSuggestRequest, provider: str = "heuristic_fallback", reason_prefix: str = "") -> Dict[str, Any]:
-    seg = next((s for s in req.segments if int(s.get("segment_id", -999)) == int(req.segment_id)), None)
-    if not seg:
-        seg = {"segment_id": req.segment_id, "role_guess": "object", "suggested_color": "#3B82F6", "confidence": 0.55}
-    role = str(seg.get("role_id") or seg.get("role_guess") or "object")
-    color = role_memory_color(req.role_memory, role, str(seg.get("color_hex") or seg.get("suggested_color") or "#3B82F6"))
-    conf = float(seg.get("confidence") or 0.55)
+def role_memory_item_to_dict(item: RoleMemoryItem) -> Dict[str, Any]:
     return {
-        "ok": True,
-        "provider": provider,
-        "segment_id": int(req.segment_id),
-        "role_id": role,
-        "color_hex": color,
-        "confidence": max(0.35, min(0.85, conf)),
-        "reason": reason_prefix or f"Suggested from CV segment metadata and role memory. role_guess={role}",
-        "raw_response": {"segment": seg},
+        "role_id": item.role_id,
+        "locked_color": item.locked_color,
+        "source_segment_id": item.source_segment_id,
+        "priority": item.priority,
+        "is_locked": item.is_locked,
     }
 
 
-def nova_suggest(req: VisionSuggestRequest) -> Dict[str, Any]:
-    if not bedrock_enabled():
-        return heuristic_suggest(req, reason_prefix="Bedrock Vision disabled; using CV heuristic suggestion.")
-
-    image_url = req.segment_ids_url or req.colorized_url or req.line_url
-    if not image_url:
-        return heuristic_suggest(req, reason_prefix="No image URL provided to Vision; using CV heuristic suggestion.")
-
+def optional_download(url: Optional[str]) -> Optional[bytes]:
+    if not url:
+        return None
     try:
-        image_bytes = download_bytes(image_url)
-        image_format = "png"
-        if image_url.lower().split("?")[0].endswith((".jpg", ".jpeg")):
-            image_format = "jpeg"
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-
-        model_id = os.getenv("BEDROCK_VISION_MODEL_ID", "us.amazon.nova-lite-v1:0")
-        region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-        client = boto3.client("bedrock-runtime", region_name=region)
-
-        short_segments = []
-        for s in req.segments[:120]:
-            short_segments.append({
-                "segment_id": s.get("segment_id"),
-                "bbox": s.get("bbox"),
-                "centroid": s.get("centroid"),
-                "area_ratio": s.get("area_ratio"),
-                "role_guess": s.get("role_guess"),
-                "assigned_color": s.get("assigned_color") or s.get("color_hex"),
-                "confidence": s.get("confidence"),
-            })
-
-        memory = [{"role_id": r.role_id, "locked_color": r.locked_color, "priority": r.priority} for r in req.role_memory if r.locked_color]
-        prompt = f"""
-You are a visual assistant for FrameFlow, a lineart-preserving sketch color propagation tool.
-The image shows a sketch/colorized preview with segment id labels. Do NOT suggest generating or editing the image.
-Task: for selected segment_id={req.segment_id}, identify the semantic role and best color.
-Allowed roles: skin, hair, face, shirt, pants, shoes, accessory, object, background, unknown.
-Use role_memory colors if the selected role exists there.
-Return ONLY valid JSON with keys: role_id, color_hex, confidence, reason.
-
-Segment metadata:
-{json.dumps(short_segments, ensure_ascii=False)}
-
-Role memory:
-{json.dumps(memory, ensure_ascii=False)}
-""".strip()
-
-        body = {
-            "schemaVersion": "messages-v1",
-            "system": [{"text": "Return compact valid JSON only. No markdown."}],
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"image": {"format": image_format, "source": {"bytes": b64}}},
-                    {"text": prompt},
-                ],
-            }],
-            "inferenceConfig": {"maxTokens": 400, "temperature": 0.1, "topP": 0.1},
-        }
-        response = client.invoke_model(modelId=model_id, body=json.dumps(body))
-        model_response = json.loads(response["body"].read())
-        text = model_response["output"]["message"]["content"][0].get("text", "")
-        parsed = extract_json_object(text)
-
-        role = str(parsed.get("role_id") or parsed.get("role") or "unknown")
-        color = str(parsed.get("color_hex") or role_memory_color(req.role_memory, role, "#3B82F6"))
-        conf = float(parsed.get("confidence") or 0.65)
-        return {
-            "ok": True,
-            "provider": "amazon_bedrock_nova",
-            "model_id": model_id,
-            "segment_id": int(req.segment_id),
-            "role_id": role,
-            "color_hex": color,
-            "confidence": max(0.0, min(1.0, conf)),
-            "reason": str(parsed.get("reason") or "Amazon Nova suggested semantic role/color."),
-            "raw_response": model_response,
-        }
-    except Exception as e:
-        return heuristic_suggest(req, provider="heuristic_after_bedrock_error", reason_prefix=f"Bedrock Vision failed; fallback used: {e}")
+        return download_bytes(url)
+    except Exception:
+        return None
 
 
 @app.post("/v1/vision-suggest")
 def vision_suggest(req: VisionSuggestRequest, x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Suggest semantic role/color for one segment.
+
+    This endpoint is intentionally NOT part of the automatic CV colorization path.
+    It is called only from the Review/Correction panel. The returned suggestion is
+    saved as pending_user_confirm in Vercel/Supabase; Role Memory is updated only
+    after the user applies the correction.
+    """
     require_api_key(x_frameflow_key)
-    return nova_suggest(req)
+    role_memory = [role_memory_item_to_dict(item) for item in req.role_memory]
+    return suggest_segment_role_color(
+        segment_id=int(req.segment_id),
+        segments=req.segments,
+        role_memory=role_memory,
+        line_bytes=optional_download(req.line_url),
+        colorized_bytes=optional_download(req.colorized_url),
+        segment_ids_bytes=optional_download(req.segment_ids_url),
+        reference_bytes=optional_download(req.reference_url),
+    )

@@ -11,6 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY frameflow_cv_service.py .
+COPY vision_ai_service.py .
 
 EXPOSE 8080
 
