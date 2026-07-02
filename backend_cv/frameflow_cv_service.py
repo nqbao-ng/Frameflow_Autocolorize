@@ -568,7 +568,83 @@ def guess_role(seg: Segment, width: int, height: int) -> str:
         return "accessory"
     return "object"
 
+def _memory_attr(item: Any, name: str, default: Any = None) -> Any:
+    if isinstance(item, dict):
+        return item.get(name, default)
+    return getattr(item, name, default)
 
+
+def role_memory_map(role_memory: List[RoleMemoryItem]) -> Dict[str, Tuple[int, int, int]]:
+    out: Dict[str, Tuple[int, int, int]] = {}
+    if not role_memory:
+        return out
+
+    def priority(item: RoleMemoryItem) -> int:
+        try:
+            return int(_memory_attr(item, "priority", 0) or 0)
+        except Exception:
+            return 0
+
+    for item in sorted(role_memory, key=priority, reverse=True):
+        role = str(_memory_attr(item, "role_id", "") or "").strip().lower()
+        color_hex = str(_memory_attr(item, "locked_color", "") or "").strip()
+        is_locked = bool(_memory_attr(item, "is_locked", True))
+        if not role or not color_hex or not is_locked:
+            continue
+        if role in out:
+            continue
+        try:
+            out[role] = hex_to_rgb(color_hex)
+        except Exception:
+            continue
+    return out
+
+
+def apply_role_memory_hints(
+    a: FrameAnalysis,
+    colors: Dict[int, Tuple[int, int, int]],
+    confidence: Dict[int, float],
+    match_info: Dict[int, Dict[str, Any]],
+    role_memory: List[RoleMemoryItem],
+    cfg: AnalyzeSettings,
+) -> None:
+    if not bool(getattr(cfg, "use_role_memory", True)):
+        return
+
+    memory = role_memory_map(role_memory)
+    if not memory:
+        return
+
+    max_conf = float(getattr(cfg, "role_memory_override_max_confidence", 0.55))
+
+    for seg in a.segments:
+        seg_id = int(seg.segment_id)
+        old_conf = float(confidence.get(seg_id, 0.0))
+
+        if old_conf > max_conf:
+            continue
+
+        role = guess_role(seg, a.width, a.height)
+        role_key = str(role or "").strip().lower()
+
+        if role_key in {"", "background", "unknown"}:
+            continue
+
+        if role_key not in memory:
+            continue
+
+        colors[seg_id] = memory[role_key]
+        confidence[seg_id] = max(old_conf, min(0.72, max_conf + 0.12))
+
+        match_info[seg_id] = {
+            **match_info.get(seg_id, {}),
+            "method": "role_memory_low_confidence_hint",
+            "role_id": role_key,
+            "color_hex": rgb_to_hex(memory[role_key]),
+            "previous_confidence": round(old_conf, 4),
+            "confidence": round(float(confidence[seg_id]), 4),
+        }
+        
 def count_low_confidence(a: FrameAnalysis, conf: Dict[int, float], cfg: AnalyzeSettings) -> int:
     cnt = 0
     for seg in a.segments:
