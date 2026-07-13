@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useProfile } from "@/features/auth/hooks/useProfile";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -593,12 +594,9 @@ export function UserSettingsPage() {
         >
           <ArrowLeft size={16} /> Back to projects
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={14} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 17, color: "#1E293B" }}>FrameFlow</span>
-          <span style={{ color: "#CBD5E1", margin: "0 4px" }}>/</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <BrandLogo height={31} />
+          <span style={{ color: "#CBD5E1" }}>/</span>
           <span style={{ fontSize: 14, color: "#64748B" }}>Settings</span>
         </div>
         <button

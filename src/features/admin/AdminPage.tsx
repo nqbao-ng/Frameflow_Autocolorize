@@ -7,9 +7,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   Users, CreditCard, LogOut, ArrowLeft, Search, Trash2, Edit2,
-  ChevronDown, Loader2, AlertCircle, CheckCircle, Zap,
+  ChevronDown, Loader2, AlertCircle, CheckCircle,
 } from "lucide-react";
 import { useAuth } from "../auth/hooks/useAuth";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 import {
   getAllUsers,
   getUserDetails,
@@ -616,11 +617,9 @@ export function AdminPage() {
         >
           <ArrowLeft size={16} /> Back to projects
         </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: "#EF4444", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={14} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 17, color: "#1E293B" }}>Admin</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <BrandLogo height={31} />
+          <span style={{ padding: "4px 8px", borderRadius: 999, background: "#FEE2E2", color: "#B91C1C", fontWeight: 800, fontSize: 11 }}>ADMIN</span>
         </div>
         <button
           onClick={handleSignOut}

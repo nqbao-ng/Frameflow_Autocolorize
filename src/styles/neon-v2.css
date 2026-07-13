@@ -1,0 +1,289 @@
+/* FrameFlow Neon v2 Design System - Global Styles */
+
+:root {
+  /* Primary Colors */
+  --ff-primary-gradient-1: #7C3AED;
+  --ff-primary-gradient-2: #A855F7;
+  --ff-primary-gradient-3: #FF2E9A;
+  --ff-primary-gradient-4: #FF8A34;
+  
+  /* Semantic Colors */
+  --ff-danger: #FF3D71;
+  --ff-success: #00D084;
+  --ff-warning: #FF8A34;
+  --ff-info: #7C3AED;
+  
+  /* Background Colors */
+  --ff-bg-primary: #0B0B14;
+  --ff-bg-secondary: #10101A;
+  --ff-bg-tertiary: #11111B;
+  --ff-bg-surface: #181827;
+  --ff-bg-overlay: rgba(15, 15, 25, 0.82);
+  
+  /* Border & Glass */
+  --ff-border-primary: #2A2A40;
+  --ff-border-secondary: #2B2B45;
+  --ff-border-glass: rgba(255, 255, 255, 0.05);
+  --ff-glass-blur: 18px;
+  
+  /* Text Colors */
+  --ff-text-primary: #FFFFFF;
+  --ff-text-secondary: #AAB2D5;
+  --ff-text-tertiary: #7E86A4;
+  --ff-text-inverse: #0B0B14;
+  
+  /* Gradients */
+  --ff-gradient-primary: linear-gradient(135deg, #7C3AED 0%, #A855F7 25%, #FF2E9A 75%, #FF8A34 100%);
+  --ff-gradient-aurora: radial-gradient(ellipse at 50% 50%, rgba(124, 58, 237, 0.3) 0%, rgba(255, 46, 154, 0.2) 40%, transparent 100%);
+  --ff-gradient-icon: linear-gradient(135deg, #FF2E9A 0%, #FF8A34 100%);
+  --ff-gradient-border: linear-gradient(135deg, #7C3AED 0%, #FF2E9A 50%, #FF8A34 100%);
+  --ff-gradient-timeline: linear-gradient(90deg, #7C3AED 0%, #FF2E9A 100%);
+  --ff-gradient-progress: linear-gradient(90deg, #7C3AED 0%, #FF8A34 100%);
+  
+  /* Shadows & Glows */
+  --ff-elevation-1: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --ff-elevation-2: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --ff-elevation-3: 0 8px 24px rgba(0, 0, 0, 0.2);
+  --ff-elevation-4: 0 12px 32px rgba(0, 0, 0, 0.25);
+  --ff-elevation-5: 0 16px 40px rgba(0, 0, 0, 0.3);
+  --ff-elevation-6: 0 20px 48px rgba(0, 0, 0, 0.35);
+  
+  --ff-glow-button-primary: 0 8px 30px rgba(168, 85, 247, 0.35);
+  --ff-glow-card-hover: 0 0 20px rgba(255, 46, 154, 0.2);
+  --ff-glow-input-focus: 0 0 16px rgba(255, 46, 154, 0.3);
+  --ff-glow-icon: 0 0 12px rgba(255, 46, 154, 0.4);
+  --ff-glow-pink: 0 0 20px rgba(255, 46, 154, 0.4);
+  
+  /* Motion */
+  --ff-motion-duration-fast: 150ms;
+  --ff-motion-duration-base: 200ms;
+  --ff-motion-duration-slow: 250ms;
+  --ff-motion-duration-slower: 300ms;
+  --ff-motion-duration-slowest: 400ms;
+  --ff-motion-easing-ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ff-motion-easing-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ff-motion-easing-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ff-transition-base: all var(--ff-motion-duration-base) var(--ff-motion-easing-ease-out);
+}
+
+/* Keyframe Animations */
+
+@keyframes ff-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(255, 46, 154, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(255, 46, 154, 0.5);
+  }
+}
+
+@keyframes ff-aurora {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ff-shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+@keyframes ff-float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes ff-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 15px rgba(255, 46, 154, 0.3), inset 0 0 15px rgba(255, 46, 154, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 46, 154, 0.5), inset 0 0 20px rgba(255, 46, 154, 0.2);
+  }
+}
+
+@keyframes ff-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Glassmorphism Base */
+
+.glass-base {
+  background: rgba(22, 22, 34, 0.8);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-strong {
+  background: rgba(15, 15, 25, 0.82);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-light {
+  background: rgba(22, 22, 34, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+/* Glow Effects */
+
+.glow-sm {
+  box-shadow: 0 0 8px rgba(255, 46, 154, 0.2);
+}
+
+.glow-md {
+  box-shadow: 0 0 16px rgba(255, 46, 154, 0.3);
+}
+
+.glow-lg {
+  box-shadow: 0 0 24px rgba(255, 46, 154, 0.4);
+}
+
+.glow-xl {
+  box-shadow: 0 8px 30px rgba(168, 85, 247, 0.35);
+}
+
+.glow-pulse {
+  animation: ff-pulse-glow 2s ease-in-out infinite;
+}
+
+/* Hover Effects */
+
+.hover-lift {
+  transition: transform var(--ff-motion-duration-base) var(--ff-motion-easing-ease-out), 
+              box-shadow var(--ff-motion-duration-base) var(--ff-motion-easing-ease-out);
+}
+
+.hover-lift:hover {
+  transform: translateY(-3px);
+}
+
+.hover-glow {
+  transition: box-shadow var(--ff-motion-duration-base) var(--ff-motion-easing-ease-out);
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(255, 46, 154, 0.3);
+}
+
+/* Aurora Background Effect */
+
+.aurora-bg {
+  position: relative;
+  background: var(--ff-bg-primary);
+}
+
+.aurora-bg::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ff-gradient-aurora);
+  pointer-events: none;
+  animation: ff-aurora 3s ease-in-out infinite;
+}
+
+/* Breathing Glow Animation */
+
+.breathing-glow {
+  animation: ff-glow 2s ease-in-out infinite;
+}
+
+/* Loading Spinner */
+
+.spinner {
+  border: 3px solid var(--ff-border-primary);
+  border-top: 3px solid var(--ff-gradient-primary);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  animation: ff-rotate 1.2s linear infinite;
+}
+
+/* Neon Border Gradient */
+
+.neon-border {
+  border-image-source: var(--ff-gradient-border);
+  border-image-slice: 1;
+}
+
+/* Upload Zone Breathing */
+
+.upload-zone {
+  border: 2px dashed var(--ff-primary-gradient-1);
+  border-radius: 22px;
+  background: rgba(26, 26, 38, 0.4);
+  transition: all var(--ff-motion-duration-base) var(--ff-motion-easing-ease-out);
+  animation: ff-glow 2s ease-in-out infinite;
+}
+
+.upload-zone:hover {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: var(--ff-primary-gradient-3);
+  box-shadow: 0 0 20px rgba(255, 46, 154, 0.3);
+}
+
+.upload-zone.success {
+  background: rgba(0, 208, 132, 0.1);
+  border-color: var(--ff-success);
+  animation: none;
+}
+
+/* Disabled State */
+
+.disabled-state {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Focus Visible */
+
+:focus-visible {
+  outline: 2px solid var(--ff-primary-gradient-3);
+  outline-offset: 2px;
+}
+
+/* Reduced Motion Support */
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Dark Mode (Default - No Light Mode) */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+  
+  body {
+    background: var(--ff-bg-primary);
+    color: var(--ff-text-primary);
+  }
+}

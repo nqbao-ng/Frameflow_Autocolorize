@@ -191,8 +191,9 @@
 
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, EyeOff, Zap, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 export function SignInPage() {
   const [showPass, setShowPass] = useState(false);
@@ -246,20 +247,15 @@ export function SignInPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #F4F8FF 0%, #F0F4FF 100%)",
+        background: "linear-gradient(135deg, #0B0B14 0%, #10101A 100%)",
         display: "flex",
         flexDirection: "column",
         fontFamily: "'Inter', sans-serif",
       }}
     >
-      {/* Logo */}
-      <div style={{ padding: "28px 40px" }}>
-        <Link to="/" className="flex items-center gap-2 no-underline" style={{ width: "fit-content" }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={18} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 20, color: "#1E293B" }}>FrameFlow</span>
-        </Link>
+      {/* Brand */}
+      <div style={{ padding: "24px 40px" }}>
+        <BrandLogo height={46} />
       </div>
 
       {/* Card */}
@@ -268,24 +264,24 @@ export function SignInPage() {
           style={{
             width: "100%",
             maxWidth: 400,
-            background: "white",
+            background: "#181827",
             borderRadius: 20,
             padding: "40px",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-            border: "1px solid rgba(0,0,0,0.04)",
+            boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            border: "1px solid #2A2A40",
           }}
         >
           <div style={{ marginBottom: 32, textAlign: "center" }}>
-            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#1E293B", letterSpacing: "-0.5px", marginBottom: 8 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: "#F5F3FF", letterSpacing: "-0.5px", marginBottom: 8 }}>
               Welcome back
             </h1>
-            <p style={{ fontSize: 14, color: "#64748B" }}>Sign in to continue to FrameFlow</p>
+            <p style={{ fontSize: 14, color: "#AAB2D5" }}>Sign in to continue to FrameFlow</p>
           </div>
 
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Email */}
             <div>
-              <label style={{ fontSize: 13, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#AAB2D5", display: "block", marginBottom: 6 }}>
                 Email address
               </label>
               <input
@@ -296,12 +292,14 @@ export function SignInPage() {
                 disabled={loading}
                 style={{
                   width: "100%", padding: "11px 14px", borderRadius: 10,
-                  border: "1.5px solid #E2E8F0", fontSize: 14, color: "#1E293B",
+                  border: "1.5px solid #2A2A40", fontSize: 14,
                   outline: "none", boxSizing: "border-box", fontFamily: "'Inter', sans-serif",
                   opacity: loading ? 0.6 : 1,
+                  background: "#11111B",
+                  color: "#FFFFFF",
                 }}
-                onFocus={(e) => (e.target.style.borderColor = "#3B82F6")}
-                onBlur={(e)  => (e.target.style.borderColor = "#E2E8F0")}
+                onFocus={(e) => { e.target.style.borderColor = "#FF2E9A"; e.target.style.boxShadow = "0 0 16px rgba(255,46,154,0.3)"; }}
+                onBlur={(e)  => { e.target.style.borderColor = "#2A2A40"; e.target.style.boxShadow = "none"; }}
                 required
               />
             </div>
@@ -309,8 +307,8 @@ export function SignInPage() {
             {/* Password */}
             <div>
               <div className="flex justify-between items-center mb-1.5">
-                <label style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Password</label>
-                <a href="#" style={{ fontSize: 12, color: "#3B82F6", textDecoration: "none" }}>Forgot password?</a>
+                <label style={{ fontSize: 13, fontWeight: 600, color: "#AAB2D5" }}>Password</label>
+                <a href="#" style={{ fontSize: 12, color: "#FF2E9A", textDecoration: "none" }}>Forgot password?</a>
               </div>
               <div style={{ position: "relative" }}>
                 <input
@@ -321,12 +319,13 @@ export function SignInPage() {
                   disabled={loading}
                   style={{
                     width: "100%", padding: "11px 40px 11px 14px", borderRadius: 10,
-                    border: "1.5px solid #E2E8F0", fontSize: 14, color: "#1E293B",
+                    border: "1.5px solid #2A2A40", fontSize: 14, color: "#FFFFFF",
                     outline: "none", boxSizing: "border-box", fontFamily: "'Inter', sans-serif",
                     opacity: loading ? 0.6 : 1,
+                    background: "#11111B",
                   }}
-                  onFocus={(e) => (e.target.style.borderColor = "#3B82F6")}
-                  onBlur={(e)  => (e.target.style.borderColor = "#E2E8F0")}
+                  onFocus={(e) => { e.target.style.borderColor = "#FF2E9A"; e.target.style.boxShadow = "0 0 16px rgba(255,46,154,0.3)"; }}
+                  onBlur={(e)  => { e.target.style.borderColor = "#2A2A40"; e.target.style.boxShadow = "none"; }}
                   required
                 />
                 <button
@@ -335,7 +334,7 @@ export function SignInPage() {
                   style={{
                     position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
                     background: "none", border: "none", cursor: "pointer",
-                    color: "#94A3B8", padding: 0, display: "flex", alignItems: "center",
+                    color: "#FF2E9A", padding: 0, display: "flex", alignItems: "center",
                   }}
                 >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -346,9 +345,9 @@ export function SignInPage() {
             {/* Error */}
             {error && (
               <div style={{
-                background: "#FEF2F2", border: "1px solid #FECACA",
+                background: "rgba(255,61,113,0.1)", border: "1px solid #FF3D71",
                 borderRadius: 8, padding: "10px 14px",
-                fontSize: 13, color: "#DC2626", fontWeight: 500,
+                fontSize: 13, color: "#FF3D71", fontWeight: 500,
               }}>
                 {error}
               </div>
@@ -360,11 +359,11 @@ export function SignInPage() {
               disabled={loading}
               style={{
                 width: "100%", padding: "13px", borderRadius: 10,
-                background: loading ? "#93C5FD" : "#3B82F6",
+                background: loading ? "rgba(168,85,247,0.5)" : "linear-gradient(135deg, #7C3AED 0%, #A855F7 25%, #FF2E9A 75%, #FF8A34 100%)",
                 color: "white", fontWeight: 700, fontSize: 15,
                 border: "none", cursor: loading ? "not-allowed" : "pointer",
                 marginTop: 8, fontFamily: "'Inter', sans-serif",
-                boxShadow: loading ? "none" : "0 4px 16px rgba(59,130,246,0.3)",
+                boxShadow: loading ? "none" : "0 8px 30px rgba(168,85,247,0.35)",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 transition: "background 0.2s",
               }}
@@ -375,16 +374,16 @@ export function SignInPage() {
           </form>
 
           <div style={{ textAlign: "center", marginTop: 24 }}>
-            <span style={{ fontSize: 14, color: "#64748B" }}>Don't have an account? </span>
-            <Link to="/signup" style={{ fontSize: 14, fontWeight: 600, color: "#3B82F6", textDecoration: "none" }}>
+            <span style={{ fontSize: 14, color: "#AAB2D5" }}>Don't have an account? </span>
+            <Link to="/signup" style={{ fontSize: 14, fontWeight: 600, color: "#FF2E9A", textDecoration: "none" }}>
               Sign up free
             </Link>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0" }}>
-            <div style={{ flex: 1, height: 1, background: "#E2E8F0" }} />
-            <span style={{ fontSize: 12, color: "#94A3B8" }}>or continue with</span>
-            <div style={{ flex: 1, height: 1, background: "#E2E8F0" }} />
+            <div style={{ flex: 1, height: 1, background: "#2A2A40" }} />
+            <span style={{ fontSize: 12, color: "#7E86A4" }}>or continue with</span>
+            <div style={{ flex: 1, height: 1, background: "#2A2A40" }} />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -393,9 +392,9 @@ export function SignInPage() {
                 key={provider}
                 disabled
                 style={{
-                  padding: "11px", borderRadius: 10, border: "1.5px solid #E2E8F0",
-                  background: "white", fontSize: 14, fontWeight: 500,
-                  color: "#94A3B8", cursor: "not-allowed",
+                  padding: "11px", borderRadius: 10, border: "1.5px solid #2A2A40",
+                  background: "#161622", fontSize: 14, fontWeight: 500,
+                  color: "#7E86A4", cursor: "not-allowed",
                   fontFamily: "'Inter', sans-serif",
                 }}
                 title="Coming soon"

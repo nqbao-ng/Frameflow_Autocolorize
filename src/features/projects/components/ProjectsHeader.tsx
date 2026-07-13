@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
-import { Zap, User, LogOut, Settings, Palette, Bell, ShieldCheck, ChevronRight } from "lucide-react";
+import { User, LogOut, Settings, Palette, Bell, ShieldCheck, ChevronRight } from "lucide-react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 export function ProjectsHeader() {
   const { user, signOut } = useAuth();
@@ -42,12 +43,7 @@ export function ProjectsHeader() {
       height: 64,
     }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 40px", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Link to="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={16} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 20, color: "#1E293B" }}>FrameFlow</span>
-        </Link>
+        <BrandLogo height={39} />
 
         {/* User dropdown */}
         <div ref={ref} style={{ position: "relative" }}>

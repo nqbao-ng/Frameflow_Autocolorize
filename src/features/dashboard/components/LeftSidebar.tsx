@@ -1,9 +1,10 @@
 import { Link } from "react-router";
 import {
-  Zap, ChevronRight, LayoutGrid, FileImage, Star,
+  ChevronRight, LayoutGrid, FileImage, Star,
   List, ImageIcon, Crown, FolderOpen, X, Eye,
 } from "lucide-react";
 import type { useDashboard } from "../hooks/useDashboard";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 type DashboardCtx = ReturnType<typeof useDashboard>;
 
@@ -32,14 +33,9 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
         display: "flex", flexDirection: "column", overflow: "hidden",
       }}
     >
-      {/* Logo */}
-      <div style={{ padding: "16px 14px 0", flexShrink: 0 }}>
-        <Link to="/" className="flex items-center gap-2 no-underline mb-0" style={{ width: "fit-content" }}>
-          <div style={{ width: 26, height: 26, borderRadius: 7, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={13} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 16, color: "#1E293B" }}>FrameFlow</span>
-        </Link>
+      {/* Brand */}
+      <div style={{ padding: "14px 14px 2px", flexShrink: 0 }}>
+        <BrandLogo height={31} />
       </div>
 
       {/* Project breadcrumb */}

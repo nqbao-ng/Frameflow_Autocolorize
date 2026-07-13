@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
 import { updateProfileData } from "./services/auth.api";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 // ─── Shared Styles ────────────────────────────────────────────────────────────
 
@@ -135,8 +136,10 @@ export function ProjectSettingsPage() {
         >
           <ArrowLeft size={16} /> Back
         </button>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#1E293B" }}>
-          Project Settings
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <BrandLogo height={30} />
+          <span style={{ color: "#CBD5E1" }}>/</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "#1E293B" }}>Project Settings</span>
         </div>
         <button
           onClick={handleSignOut}

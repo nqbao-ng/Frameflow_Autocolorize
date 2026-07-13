@@ -1,86 +1,107 @@
-import { Sparkles, Brush, FileVideo, Upload, Wand2, Download } from "lucide-react";
+import {
+  Brush,
+  Download,
+  Eye,
+  Images,
+  Layers3,
+  LockKeyhole,
+  MousePointer2,
+  Palette,
+  ScanSearch,
+  Upload,
+} from "lucide-react";
 import React from "react";
 
-// ── Images ────────────────────────────────────────────────────────────────────
-export const HERO_IMG =
-  "https://images.unsplash.com/photo-1563393471486-370b35d7de64?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhbmltZSUyMGFuaW1hdGlvbiUyMGZyYW1lJTIwY29sb3JmdWx8ZW58MXx8fHwxNzcyNzI3ODQzfDA&ixlib=rb-4.1.0&q=80&w=1080";
-export const ANIM_IMG =
-  "https://images.unsplash.com/photo-1767557125491-b3483567d843?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxhbmltYXRpb24lMjBjYXJ0b29uJTIwY2hhcmFjdGVyJTIwZHJhd2luZ3xlbnwxfHx8fDE3NzI3Mjc4NDV8MA&ixlib=rb-4.1.0&q=80&w=1080";
+export const HERO_IMG = "/landing/hero-sketch.png";
 
-// ── Features section ──────────────────────────────────────────────────────────
 export const FEATURES = [
   {
-    icon: React.createElement(Sparkles, { size: 28, color: "#3B82F6" }),
-    title: "AI Auto Color Propagation",
+    icon: React.createElement(Layers3, { size: 27, color: "#C084FC" }),
+    title: "Keyframe-Guided Propagation",
     description:
-      "Our AI analyzes your frame sequences and automatically propagates colors across frames, saving hours of tedious manual work.",
-    bg: "#EFF6FF",
+      "Color one trusted keyframe, then propagate its palette across the sketch sequence while preserving the original lineart.",
+    bg: "rgba(124, 58, 237, 0.18)",
   },
   {
-    icon: React.createElement(Brush, { size: 28, color: "#8B5CF6" }),
-    title: "Manual Brush & Smart Correction",
+    icon: React.createElement(ScanSearch, { size: 27, color: "#FB7185" }),
+    title: "Confidence-Aware Review",
     description:
-      "Precise manual brushing tools with AI-powered edge detection and smart color correction for pixel-perfect results.",
-    bg: "#F5F3FF",
+      "FrameFlow flags uncertain regions and pauses before a weak result can become the reference for later frames.",
+    bg: "rgba(255, 46, 154, 0.16)",
   },
   {
-    icon: React.createElement(FileVideo, { size: 28, color: "#F59E0B" }),
-    title: "Export PNG Sequence or MP4",
+    icon: React.createElement(LockKeyhole, { size: 27, color: "#34D399" }),
+    title: "Correction & Role Memory",
     description:
-      "Export your colored animations in high quality — PNG frame sequences for editing or MP4 for instant sharing.",
-    bg: "#FFFBEB",
+      "Correct a selected segment, lock its semantic role and color, then continue from a new trusted correction keyframe.",
+    bg: "rgba(0, 208, 132, 0.14)",
   },
 ];
 
-// ── Steps section ─────────────────────────────────────────────────────────────
 export const STEPS = [
   {
     number: "01",
-    icon: React.createElement(Upload, { size: 32, color: "#3B82F6" }),
-    title: "Upload Frame Sequence",
-    description: "Drop your animation frames or import from your project. Supports PNG, JPG, and PSD sequences.",
-    color: "#3B82F6",
+    icon: React.createElement(Upload, { size: 25, color: "#60A5FA" }),
+    title: "Upload Sketch Sequence",
+    description: "Import PNG, JPG or WEBP lineart frames in sequence order.",
+    color: "#60A5FA",
   },
   {
     number: "02",
-    icon: React.createElement(Wand2, { size: 32, color: "#8B5CF6" }),
-    title: "Add Reference or Let AI Auto Color",
-    description: "Provide a color reference image or let FrameFlow's AI intelligently colorize your entire sequence.",
-    color: "#8B5CF6",
+    icon: React.createElement(Palette, { size: 25, color: "#C084FC" }),
+    title: "Add a Colored Keyframe",
+    description: "Attach a colored version to the matching sketch and use it as the reference.",
+    color: "#C084FC",
   },
   {
     number: "03",
-    icon: React.createElement(Download, { size: 32, color: "#10B981" }),
-    title: "Review & Export",
-    description: "Fine-tune individual frames with manual tools, then export as a PNG sequence or MP4 video.",
-    color: "#10B981",
+    icon: React.createElement(Images, { size: 25, color: "#F472B6" }),
+    title: "Auto Color the Sequence",
+    description: "Computer Vision matches regions, transfers colors and restores the original lineart.",
+    color: "#F472B6",
+  },
+  {
+    number: "04",
+    icon: React.createElement(MousePointer2, { size: 25, color: "#FB923C" }),
+    title: "Review Uncertain Segments",
+    description: "Pick a segment, assign its role, preview the new color and apply the correction.",
+    color: "#FB923C",
+  },
+  {
+    number: "05",
+    icon: React.createElement(Download, { size: 25, color: "#34D399" }),
+    title: "Preview & Export",
+    description: "Play the finished sequence and export individual PNGs or the complete ZIP.",
+    color: "#34D399",
   },
 ];
 
-// ── Pricing section ───────────────────────────────────────────────────────────
-export const FREE_PLAN_FEATURES = [
-  "720p export",
-  "PNG sequence only",
-  "Watermark on export",
-  "Basic AI coloring",
-  "5 projects",
+export const REVIEW_POINTS = [
+  {
+    icon: React.createElement(Eye, { size: 18, color: "#F472B6" }),
+    title: "Low-confidence overlay",
+    text: "See the regions that need attention instead of checking every pixel manually.",
+  },
+  {
+    icon: React.createElement(Brush, { size: 18, color: "#C084FC" }),
+    title: "Segment recolor",
+    text: "Select a region directly on the canvas and correct only that segment.",
+  },
+  {
+    icon: React.createElement(LockKeyhole, { size: 18, color: "#34D399" }),
+    title: "Trusted continuation",
+    text: "Turn the corrected frame into a new keyframe and continue without carrying the error forward.",
+  },
 ];
 
-export const PRO_PLAN_FEATURES = [
-  "1080p export",
-  "MP4 & PNG export",
-  "No watermark",
-  "Faster AI processing",
-  "Unlimited projects",
-  "Priority support",
-];
-
-// ── Hero trust badges ─────────────────────────────────────────────────────────
 export const HERO_TRUST_BADGES = [
-  "No credit card required",
-  "Free forever plan",
-  "Export in seconds",
+  "Original lineart preserved",
+  "Human-controlled corrections",
+  "PNG and ZIP export",
 ];
 
-// ── Footer nav links ──────────────────────────────────────────────────────────
-export const FOOTER_NAV_LINKS = ["Pricing", "Download", "Learn", "Terms", "Privacy"];
+export const FOOTER_NAV_LINKS = [
+  { label: "Features", href: "#features" },
+  { label: "Workflow", href: "#workflow" },
+  { label: "Human Review", href: "#review" },
+];

@@ -51,12 +51,12 @@
 //             <h1 style={{ fontSize: 26, fontWeight: 800, color: "#1E293B", letterSpacing: "-0.5px", marginBottom: 8 }}>
 //               Create your account
 //             </h1>
-//             <p style={{ fontSize: 14, color: "#64748B" }}>Start colorizing animations for free</p>
+//             <p style={{ fontSize: 14, color: "#64748B" }}>Create your FrameFlow workspace</p>
 //           </div>
 
 //           {/* Benefits */}
 //           <div style={{ background: "#F8FAFF", borderRadius: 12, padding: "14px 16px", marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
-//             {["No credit card required", "5 free projects included", "Export PNG sequences"].map((b) => (
+//             {["Keyframe-guided color propagation", "Human-in-the-loop review", "Export PNG sequences"].map((b) => (
 //               <div key={b} className="flex items-center gap-2">
 //                 <Check size={14} color="#3B82F6" strokeWidth={2.5} />
 //                 <span style={{ fontSize: 13, color: "#475569" }}>{b}</span>
@@ -215,8 +215,9 @@
 
 import { useState } from "react";
 import { Link } from "react-router";
-import { Eye, EyeOff, Zap, Check, Loader2, Mail } from "lucide-react";
+import { Eye, EyeOff, Check, Loader2, Mail } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
+import { BrandLogo } from "@/shared/components/BrandLogo";
 
 export function SignUpPage() {
   const [showPass,       setShowPass]       = useState(false);
@@ -271,13 +272,8 @@ export function SignUpPage() {
           fontFamily: "'Inter', sans-serif",
         }}
       >
-        <div style={{ padding: "28px 40px" }}>
-          <Link to="/" className="flex items-center gap-2 no-underline" style={{ width: "fit-content" }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Zap size={18} color="white" fill="white" />
-            </div>
-            <span style={{ fontWeight: 700, fontSize: 20, color: "#1E293B" }}>FrameFlow</span>
-          </Link>
+        <div style={{ padding: "24px 40px" }}>
+          <BrandLogo height={46} />
         </div>
 
         <div className="flex-1 flex items-center justify-center px-4">
@@ -343,14 +339,9 @@ export function SignUpPage() {
         fontFamily: "'Inter', sans-serif",
       }}
     >
-      {/* Logo */}
-      <div style={{ padding: "28px 40px" }}>
-        <Link to="/" className="flex items-center gap-2 no-underline" style={{ width: "fit-content" }}>
-          <div style={{ width: 34, height: 34, borderRadius: 10, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={18} color="white" fill="white" />
-          </div>
-          <span style={{ fontWeight: 700, fontSize: 20, color: "#1E293B" }}>FrameFlow</span>
-        </Link>
+      {/* Brand */}
+      <div style={{ padding: "24px 40px" }}>
+        <BrandLogo height={46} />
       </div>
 
       {/* Card */}
@@ -367,12 +358,12 @@ export function SignUpPage() {
             <h1 style={{ fontSize: 26, fontWeight: 800, color: "#1E293B", letterSpacing: "-0.5px", marginBottom: 8 }}>
               Create your account
             </h1>
-            <p style={{ fontSize: 14, color: "#64748B" }}>Start colorizing animations for free</p>
+            <p style={{ fontSize: 14, color: "#64748B" }}>Create your FrameFlow workspace</p>
           </div>
 
           {/* Benefits */}
           <div style={{ background: "#F8FAFF", borderRadius: 12, padding: "14px 16px", marginBottom: 24, display: "flex", flexDirection: "column", gap: 8 }}>
-            {["No credit card required", "5 free projects included", "Export PNG sequences"].map((b) => (
+            {["Keyframe-guided color propagation", "Human-in-the-loop review", "Export PNG sequences"].map((b) => (
               <div key={b} className="flex items-center gap-2">
                 <Check size={14} color="#3B82F6" strokeWidth={2.5} />
                 <span style={{ fontSize: 13, color: "#475569" }}>{b}</span>

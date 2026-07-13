@@ -1,6 +1,8 @@
 // import { createRoot } from "react-dom/client";
 // import App from "./app/App.tsx";
 // import "./styles/index.css";
+import "./styles/neon-v2.css";
+import "./styles/landing.css";
 // import {
 //   AuthProvider,
 // } from "@/features/auth/providers/AuthProvider";
@@ -11,6 +13,8 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App.tsx";
 
 import "./styles/index.css";
+import "./styles/neon-v2.css";
+import "./styles/landing.css";
 
 import {
   AuthProvider,
