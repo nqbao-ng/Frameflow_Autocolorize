@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useNavigate } from "react-router";
 import { User, LogOut, Settings, Palette, Bell, ShieldCheck, ChevronRight } from "lucide-react";
-import { useAuth } from "@/features/auth/hooks/useAuth";
 import { BrandLogo } from "@/shared/components/BrandLogo";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 
 export function ProjectsHeader() {
   const { user, signOut } = useAuth();
@@ -43,7 +43,7 @@ export function ProjectsHeader() {
       height: 64,
     }}>
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 40px", height: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <BrandLogo height={39} />
+        <BrandLogo height={40} />
 
         {/* User dropdown */}
         <div ref={ref} style={{ position: "relative" }}>

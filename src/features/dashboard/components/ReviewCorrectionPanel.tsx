@@ -28,8 +28,8 @@ interface ReviewCorrectionPanelProps {
 
 const S = {
   section: {
-    borderBottom: "1px solid #F1F5F9",
-    background: "linear-gradient(180deg,#FFFFFF,#F8FAFC)",
+    borderBottom: "1px solid #2A2A40",
+    background: "linear-gradient(180deg,#16172E,#11111B)",
   } as CSSProperties,
   header: {
     width: "100%",
@@ -44,19 +44,19 @@ const S = {
   label: {
     fontSize: 9,
     fontWeight: 800,
-    color: "#94A3B8",
+    color: "#7E86A4",
     textTransform: "uppercase",
     letterSpacing: 0.7,
     marginBottom: 5,
   } as CSSProperties,
   select: {
     width: "100%",
-    border: "1.5px solid #E2E8F0",
+    border: "1.5px solid #2A2A40",
     borderRadius: 8,
     padding: "7px 8px",
     fontSize: 11,
-    color: "#1E293B",
-    background: "white",
+    color: "#F5F3FF",
+    background: "#181827",
     outline: "none",
   } as CSSProperties,
   button: {
@@ -129,6 +129,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
 
   const reviewFrameId = review?.job?.current_review_frame_id || null;
   const currentNeedsReview = review?.has_review || review?.status === "needs_review_not_reference";
+  const visibleReason = review?.reason?.trim() === "Lineart-preserving CV propagation completed." ? "" : review?.reason;
   const hasSegments = Boolean(review?.segments?.length);
 
   if (!currentNeedsReview && reviewFrameId && reviewFrameId !== currentFrame.id) {
@@ -138,12 +139,12 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         <div style={S.header}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Wand2 size={12} color="#F59E0B" />
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#1E293B" }}>Review Pending</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#F5F3FF" }}>Review Pending</span>
           </div>
           <button
             type="button"
             onClick={() => reviewIndex >= 0 && handleFrameChange(reviewIndex)}
-            style={{ ...S.button, background: "#FFFBEB", color: "#B45309", border: "1px solid #FDE68A" }}
+            style={{ ...S.button, background: "rgba(245,158,11,0.12)", color: "#B45309", border: "1px solid rgba(245,158,11,0.35)" }}
           >
             Go to Frame {reviewIndex >= 0 ? reviewIndex + 1 : ""}
           </button>
@@ -293,7 +294,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         <div style={S.header}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <ShieldCheck size={12} color="#8B5CF6" />
-            <span style={{ fontSize: 11, fontWeight: 800, color: "#1E293B" }}>Manual Correction</span>
+            <span style={{ fontSize: 11, fontWeight: 800, color: "#F5F3FF" }}>Manual Correction</span>
           </div>
           <button
             type="button"
@@ -306,7 +307,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           </button>
         </div>
         <div style={{ padding: "0 12px 12px" }}>
-          <div style={{ fontSize: 10, color: "#64748B", background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: 8, lineHeight: 1.45, marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: "#AAB2D5", background: "#181827", border: "1px solid #2A2A40", borderRadius: 8, padding: 8, lineHeight: 1.45, marginBottom: 8 }}>
             Sửa frame bằng Brush/Fill, sau đó dùng nút dưới để lưu frame hiện tại thành correction keyframe và recolor các frame phía sau.
           </div>
           <button
@@ -326,10 +327,10 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
       <div style={S.header}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <ShieldCheck size={12} color="#8B5CF6" />
-          <span style={{ fontSize: 11, fontWeight: 800, color: "#1E293B" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#F5F3FF" }}>
             {currentNeedsReview ? "Review / Correction" : "Segment Recolor"}
           </span>
-          <span style={{ fontSize: 9, color: currentNeedsReview ? "#7C3AED" : "#2563EB", background: currentNeedsReview ? "#F3E8FF" : "#EFF6FF", padding: "1px 6px", borderRadius: 4 }}>
+          <span style={{ fontSize: 9, color: currentNeedsReview ? "#7C3AED" : "#2563EB", background: currentNeedsReview ? "rgba(168,85,247,0.17)" : "rgba(59,130,246,0.13)", padding: "1px 6px", borderRadius: 4 }}>
             {currentNeedsReview ? "needs review" : "edit mode"}
           </span>
         </div>
@@ -345,19 +346,19 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
       </div>
 
       <div style={{ padding: "0 12px 12px" }}>
-        {review?.reason && (
-          <div style={{ fontSize: 10, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: 8, marginBottom: 10, lineHeight: 1.45 }}>
-            {review.reason}
+        {visibleReason && (
+          <div style={{ fontSize: 10, color: "#FBBF24", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 8, padding: 8, marginBottom: 10, lineHeight: 1.45 }}>
+            {visibleReason}
           </div>
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: 7 }}>
-            <div style={{ fontSize: 8, color: "#94A3B8", fontWeight: 800, textTransform: "uppercase" }}>Frame</div>
-            <div style={{ fontSize: 11, color: "#1E293B", fontWeight: 800 }}>#{activeFrame + 1}</div>
+          <div style={{ background: "#181827", border: "1px solid #2A2A40", borderRadius: 8, padding: 7 }}>
+            <div style={{ fontSize: 8, color: "#7E86A4", fontWeight: 800, textTransform: "uppercase" }}>Frame</div>
+            <div style={{ fontSize: 11, color: "#F5F3FF", fontWeight: 800 }}>#{activeFrame + 1}</div>
           </div>
-          <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 8, padding: 7 }}>
-            <div style={{ fontSize: 8, color: "#94A3B8", fontWeight: 800, textTransform: "uppercase" }}>Confidence</div>
+          <div style={{ background: "#181827", border: "1px solid #2A2A40", borderRadius: 8, padding: 7 }}>
+            <div style={{ fontSize: 8, color: "#7E86A4", fontWeight: 800, textTransform: "uppercase" }}>Confidence</div>
             <div style={{ fontSize: 11, color: confidenceColor(review?.confidence_score), fontWeight: 800 }}>
               {review?.confidence_score != null ? `${Math.round(review.confidence_score * 100)}%` : "unknown"}
             </div>
@@ -368,14 +369,14 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           <button
             type="button"
             onClick={() => setSegmentPickMode(!segmentPickMode)}
-            style={{ ...S.button, background: segmentPickMode ? "#DBEAFE" : "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE" }}
+            style={{ ...S.button, background: segmentPickMode ? "rgba(255,46,154,0.18)" : "rgba(124,58,237,0.14)", color: "#C084FC", border: "1px solid rgba(168,85,247,0.42)" }}
           >
             <MousePointer2 size={11} /> {segmentPickMode ? "Click canvas..." : "Pick segment"}
           </button>
           <button
             type="button"
             onClick={() => setShowLowConfidenceOverlay(!showLowConfidenceOverlay)}
-            style={{ ...S.button, background: showLowConfidenceOverlay ? "#FEF3C7" : "#F8FAFC", color: showLowConfidenceOverlay ? "#B45309" : "#64748B", border: "1px solid #E2E8F0" }}
+            style={{ ...S.button, background: showLowConfidenceOverlay ? "rgba(245,158,11,0.16)" : "#181827", color: showLowConfidenceOverlay ? "#FBBF24" : "#AAB2D5", border: "1px solid #2A2A40" }}
           >
             <Layers size={11} /> Low-conf overlay
           </button>
@@ -427,7 +428,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
                   height: 22,
                   borderRadius: 5,
                   background: paletteColor,
-                  border: selectedColor.toLowerCase() === paletteColor.toLowerCase() ? "2px solid #3B82F6" : "1px solid #E2E8F0",
+                  border: selectedColor.toLowerCase() === paletteColor.toLowerCase() ? "2px solid #FF2E9A" : "1px solid #2A2A40",
                   cursor: "pointer",
                 }}
               />
@@ -445,10 +446,10 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
                 setSelectedColor(e.target.value);
                 setActiveColor(e.target.value);
               }}
-              style={{ width: "100%", height: 32, border: "1.5px solid #E2E8F0", borderRadius: 8, background: "white", padding: 2 }}
+              style={{ width: "100%", height: 32, border: "1.5px solid #2A2A40", borderRadius: 8, background: "#181827", padding: 2 }}
             />
           </div>
-          <label style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 17, fontSize: 10, color: "#475569", fontWeight: 700 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 17, fontSize: 10, color: "#AAB2D5", fontWeight: 700 }}>
             <input
               type="checkbox"
               checked={paletteLocked}
@@ -470,7 +471,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           <button
             type="button"
             onClick={handleUseColor}
-            style={{ ...S.button, background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE" }}
+            style={{ ...S.button, background: "rgba(124,58,237,0.14)", color: "#C084FC", border: "1px solid rgba(168,85,247,0.42)" }}
           >
             <Pipette size={11} /> Use color
           </button>
@@ -478,7 +479,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
             type="button"
             onClick={handleSuggest}
             disabled={loading || !selectedSegmentId}
-            style={{ ...S.button, background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE" }}
+            style={{ ...S.button, background: "rgba(124,58,237,0.15)", color: "#C084FC", border: "1px solid rgba(168,85,247,0.42)" }}
           >
             <Brain size={11} /> Vision AI
           </button>
@@ -488,7 +489,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           type="button"
           onClick={() => handleRecolorSelectedSegment(selectedSegmentId, selectedColor, selectedRole)}
           disabled={!selectedSegmentId}
-          style={{ ...S.button, width: "100%", background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0", marginBottom: 6 }}
+          style={{ ...S.button, width: "100%", background: "rgba(16,185,129,0.13)", color: "#34D399", border: "1px solid rgba(52,211,153,0.38)", marginBottom: 6 }}
         >
           <Palette size={11} /> Recolor selected segment now
         </button>
@@ -496,7 +497,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         <button
           type="button"
           onClick={handleMaskRepairMode}
-          style={{ ...S.button, width: "100%", background: "#FFF7ED", color: "#C2410C", border: "1px solid #FED7AA", marginBottom: 6 }}
+          style={{ ...S.button, width: "100%", background: "rgba(249,115,22,0.12)", color: "#FB923C", border: "1px solid rgba(251,146,60,0.38)", marginBottom: 6 }}
         >
           <Eye size={11} /> Manual brush/eraser repair
         </button>
@@ -508,7 +509,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           style={{
             ...S.button,
             width: "100%",
-            background: applying ? "#CBD5E1" : "linear-gradient(135deg,#8B5CF6,#3B82F6)",
+            background: applying ? "#3A3A52" : "linear-gradient(135deg,#8B5CF6,#3B82F6)",
             color: "white",
             boxShadow: applying ? "none" : "0 2px 8px rgba(139,92,246,0.28)",
           }}
@@ -517,7 +518,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           {applying ? "Applying..." : "Apply Correction & Continue"}
         </button>
 
-        <div style={{ fontSize: 9, color: "#64748B", lineHeight: 1.45, marginTop: 8 }}>
+        <div style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.45, marginTop: 8 }}>
           Flow: pick segment → chọn role/màu → recolor vùng hoặc sửa tay → Apply để frame này thành correction keyframe.
         </div>
       </div>

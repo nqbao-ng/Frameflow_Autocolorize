@@ -24,12 +24,12 @@ export function Timeline({ ctx }: TimelineProps) {
   } = ctx;
 
   return (
-    <div style={{ background: "white", borderRadius: "10px 10px 0 0", marginTop: 8, boxShadow: "0 -2px 10px rgba(0,0,0,0.04)", flexShrink: 0 }}>
+    <div style={{ background: "#11111B", borderRadius: "10px 10px 0 0", marginTop: 8, boxShadow: "0 -2px 10px rgba(0,0,0,0.04)", flexShrink: 0 }}>
        {/* Controls row */}
-       <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #F1F5F9" }}>
+       <div style={{ padding: "8px 12px 5px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #2A2A40" }}>
          <button
            onClick={() => setIsPlaying(!isPlaying)}
-           style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: "#3B82F6", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 6px rgba(59,130,246,0.3)", flexShrink: 0 }}
+           style={{ width: 28, height: 28, borderRadius: 7, border: "none", background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 3px 10px rgba(255,46,154,0.28)", flexShrink: 0 }}
          >
            {isPlaying ? <Pause size={11} color="white" fill="white" /> : <Play size={11} color="white" fill="white" />}
          </button>
@@ -38,17 +38,17 @@ export function Timeline({ ctx }: TimelineProps) {
          <div style={{ position: "relative" }}>
            <button
              onClick={() => setShowSpeedMenu(!showSpeedMenu)}
-             style={{ display: "flex", alignItems: "center", gap: 2, padding: "4px 7px", borderRadius: 6, border: "1px solid #E2E8F0", background: "white", cursor: "pointer", fontSize: 10, fontWeight: 600, color: "#475569", fontFamily: "'Inter',sans-serif" }}
+             style={{ display: "flex", alignItems: "center", gap: 2, padding: "4px 7px", borderRadius: 6, border: "1px solid #2A2A40", background: "#181827", cursor: "pointer", fontSize: 10, fontWeight: 600, color: "#AAB2D5", fontFamily: "'Inter',sans-serif" }}
            >
              {speed}<ChevronDown size={9} />
            </button>
            {showSpeedMenu && (
-             <div style={{ position: "absolute", bottom: "110%", left: 0, background: "white", borderRadius: 8, boxShadow: "0 8px 20px rgba(0,0,0,0.12)", border: "1px solid #E2E8F0", overflow: "hidden", zIndex: 50, minWidth: 60 }}>
+             <div style={{ position: "absolute", bottom: "110%", left: 0, background: "#181827", borderRadius: 8, boxShadow: "0 8px 20px rgba(0,0,0,0.12)", border: "1px solid #2A2A40", overflow: "hidden", zIndex: 50, minWidth: 60 }}>
                {SPEEDS.map((s) => (
                  <button
                    key={s}
                    onClick={() => { setSpeed(s); setShowSpeedMenu(false); }}
-                   style={{ display: "block", width: "100%", padding: "6px 10px", border: "none", background: speed === s ? "#EFF6FF" : "white", cursor: "pointer", fontSize: 10, fontWeight: speed === s ? 600 : 400, color: speed === s ? "#3B82F6" : "#1E293B", textAlign: "left", fontFamily: "'Inter',sans-serif" }}
+                   style={{ display: "block", width: "100%", padding: "6px 10px", border: "none", background: speed === s ? "rgba(168,85,247,0.16)" : "#181827", cursor: "pointer", fontSize: 10, fontWeight: speed === s ? 600 : 400, color: speed === s ? "#C084FC" : "#AAB2D5", textAlign: "left", fontFamily: "'Inter',sans-serif" }}
                  >
                    {s}
                  </button>
@@ -57,19 +57,19 @@ export function Timeline({ ctx }: TimelineProps) {
            )}
          </div>
 
-         <span style={{ fontSize: 10, color: "#94A3B8", marginLeft: 2 }}>{uncoloredFiles.length}s · 1fps</span>
+         <span style={{ fontSize: 10, color: "#7E86A4", marginLeft: 2 }}>{uncoloredFiles.length}s · 1fps</span>
 
          {/* Select/Deselect all buttons */}
          <div style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
            <button
              onClick={selectAllFrames}
-             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #3B82F6", background: "white", cursor: "pointer", fontSize: 10, fontWeight: 500, color: "#3B82F6", fontFamily: "'Inter',sans-serif" }}
+             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #A855F7", background: "#181827", cursor: "pointer", fontSize: 10, fontWeight: 500, color: "#C084FC", fontFamily: "'Inter',sans-serif" }}
            >
              Select All
            </button>
            <button
              onClick={deselectAllFrames}
-             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #E2E8F0", background: "white", cursor: "pointer", fontSize: 10, fontWeight: 500, color: "#64748B", fontFamily: "'Inter',sans-serif" }}
+             style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #2A2A40", background: "#181827", cursor: "pointer", fontSize: 10, fontWeight: 500, color: "#AAB2D5", fontFamily: "'Inter',sans-serif" }}
            >
              Deselect All
            </button>
@@ -83,7 +83,7 @@ export function Timeline({ ctx }: TimelineProps) {
         </div>
         <div style={{ display: "flex", gap: 5, marginBottom: 0 }}>
           {uncoloredFiles.map((_, i) => (
-            <div key={`l${i}`} style={{ width: 52, minWidth: 52, height: 2, background: (i + 1) % 5 === 0 ? "#3B82F6" : "#E2E8F0", borderRadius: 1, flexShrink: 0 }} />
+            <div key={`l${i}`} style={{ width: 52, minWidth: 52, height: 2, background: (i + 1) % 5 === 0 ? "#A855F7" : "#2A2A40", borderRadius: 1, flexShrink: 0 }} />
           ))}
         </div>
 
@@ -105,9 +105,9 @@ export function Timeline({ ctx }: TimelineProps) {
                    style={{
                      width: 52, height: 48, minWidth: 52, borderRadius: 6, padding: 0,
                      flexShrink: 0, cursor: "pointer",
-                     border: isActive ? "2px solid #3B82F6" : frameRefMap[i] ? "2px solid #F59E0B" : "1.5px solid #E2E8F0",
-                     overflow: "hidden", background: "#F8FAFF", position: "relative",
-                     boxShadow: isActive ? "0 0 0 3px rgba(59,130,246,0.18)" : frameRefMap[i] ? "0 0 0 2px rgba(245,158,11,0.2)" : "none",
+                     border: isActive ? "2px solid #FF2E9A" : frameRefMap[i] ? "2px solid #F59E0B" : "1.5px solid #2A2A40",
+                     overflow: "hidden", background: "#181827", position: "relative",
+                     boxShadow: isActive ? "0 0 0 3px rgba(255,46,154,0.28)" : frameRefMap[i] ? "0 0 0 2px rgba(245,158,11,0.2)" : "none",
                      transition: "all 0.1s",
                    }}
                  >
@@ -143,7 +143,7 @@ export function Timeline({ ctx }: TimelineProps) {
                      height: 14,
                      cursor: isBeforeOrReference ? "not-allowed" : "pointer",
                      opacity: isBeforeOrReference ? 0.45 : 1,
-                     accentColor: "#3B82F6",
+                     accentColor: "#A855F7",
                    }}
                  />
                </div>
@@ -153,7 +153,7 @@ export function Timeline({ ctx }: TimelineProps) {
 
         <div style={{ display: "flex", gap: 5, marginBottom: 0 }}>
           {uncoloredFiles.map((_, i) => (
-            <div key={`lb${i}`} style={{ width: 52, minWidth: 52, height: 2, background: (i + 1) % 5 === 0 ? "#3B82F6" : "#E2E8F0", borderRadius: 1, flexShrink: 0 }} />
+            <div key={`lb${i}`} style={{ width: 52, minWidth: 52, height: 2, background: (i + 1) % 5 === 0 ? "#A855F7" : "#2A2A40", borderRadius: 1, flexShrink: 0 }} />
           ))}
         </div>
         <div style={{ display: "flex", gap: 5, marginTop: 3 }}>

@@ -29,19 +29,19 @@ const baseBtn: React.CSSProperties = {
   gap: 4,
   padding: "5px 9px",
   borderRadius: 6,
-  border: "1px solid #E2E8F0",
-  background: "white",
+  border: "1px solid #2A2A40",
+  background: "#181827",
   cursor: "pointer",
   fontSize: 11,
   fontWeight: 500,
-  color: "#475569",
+  color: "#AAB2D5",
   fontFamily: "'Inter', sans-serif",
 };
 
 const divider: React.CSSProperties = {
   width: 1,
   height: 18,
-  background: "#E2E8F0",
+  background: "#2A2A40",
   flexShrink: 0,
   margin: "0 2px",
 };
@@ -75,20 +75,20 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
         padding: "0 18px",
         height: 52,
         flexShrink: 0,
-        background: "white",
-        borderBottom: "1px solid #E2E8F0",
+        background: "#181827",
+        borderBottom: "1px solid #2A2A40",
       }}
     >
       {/* ── Breadcrumb ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         <Link
           to="/projects"
-          style={{ fontSize: 12, color: "#94A3B8", textDecoration: "none" }}
+          style={{ fontSize: 12, color: "#7E86A4", textDecoration: "none" }}
         >
           Projects
         </Link>
-        <ChevronRight size={12} color="#CBD5E1" />
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#1E293B" }}>
+        <ChevronRight size={12} color="#4A4A67" />
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#F5F3FF" }}>
           {projectName || "Untitled Project"}
         </span>
       </div>
@@ -145,10 +145,10 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
             ...baseBtn,
             border: "none",
             padding: "5px 11px",
-            background: isColoring ? "#E0E7FF" : "#3B82F6",
-            color: isColoring ? "#3B82F6" : "white",
+            background: isColoring ? "rgba(168,85,247,0.14)" : "linear-gradient(135deg,#7C3AED,#FF2E9A)",
+            color: isColoring ? "#C084FC" : "white",
             fontWeight: 600,
-            boxShadow: "0 2px 6px rgba(59,130,246,0.25)",
+            boxShadow: "0 3px 12px rgba(168,85,247,0.3)",
           }}
         >
           {isColoring
@@ -164,9 +164,9 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
           title="Save this frame as a correction keyframe and recolor following frames"
           style={{
             ...baseBtn,
-            border: "1px solid #C7D2FE",
-            background: isColoring ? "#F8FAFC" : "#EEF2FF",
-            color: isColoring ? "#94A3B8" : "#3730A3",
+            border: "1px solid rgba(168,85,247,0.45)",
+            background: isColoring ? "#141420" : "rgba(124,58,237,0.12)",
+            color: isColoring ? "#7E86A4" : "#C084FC",
             fontWeight: 700,
             cursor: isColoring ? "not-allowed" : "pointer",
           }}
@@ -182,7 +182,7 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
             ...baseBtn,
             border: "none",
             padding: "5px 11px",
-            background: "#1E293B",
+            background: "#0F0F19",
             color: "white",
             fontWeight: 600,
             marginLeft: 2,

@@ -35,7 +35,6 @@ export function ReviewSection() {
               <span className="landing-review-mode">edit mode</span>
             </div>
             <div className="landing-review-success">
-              <CheckCircle2 size={15} /> Lineart-preserving CV propagation completed.
             </div>
             <div className="landing-review-stat-grid">
               <div><small>FRAME</small><strong>#3</strong></div>

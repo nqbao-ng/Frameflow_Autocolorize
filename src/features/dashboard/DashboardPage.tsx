@@ -71,7 +71,7 @@ export function Dashboard() {
 
   return (
     <div
-      style={{ height: "100vh", background: "#F1F5F9", display: "flex", fontFamily: "'Inter',sans-serif", overflow: "hidden" }}
+      style={{ height: "100vh", background: "#0B0B14", display: "flex", fontFamily: "'Inter',sans-serif", overflow: "hidden" }}
       onMouseDown={() => setContextMenu(null)}
     >
       {/* Hidden file inputs */}

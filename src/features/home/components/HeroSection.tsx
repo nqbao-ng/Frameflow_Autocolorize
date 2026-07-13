@@ -1,12 +1,12 @@
 import { Link } from "react-router";
 import {
-  ArrowRight,
   Check,
   CircleCheck,
   Layers3,
   Play,
   ScanSearch,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { HERO_IMG, HERO_TRUST_BADGES } from "../constants/homeData";
 import { FloatingSketch } from "./FloatingSketch";
@@ -23,25 +23,27 @@ export function HeroSection() {
         <div className="landing-hero-copy">
           <div className="landing-kicker">
             <Sparkles size={14} />
-            Keyframe-guided color propagation
+            Powered by AI
           </div>
 
-          <h1 className="landing-hero-title">
-            Color one keyframe.
-            <span> Keep the whole sequence consistent.</span>
+          <h1 className="landing-hero-title landing-hero-title-classic">
+            AI-Powered
+            <span>Animation</span>
+            Coloring
           </h1>
 
           <p className="landing-hero-subtitle">
-            FrameFlow preserves your original sketch, propagates color with Computer Vision,
-            and pauses for human correction whenever confidence drops.
+            Color entire frame sequences in seconds using AI.
+            <br />
+            Edit manually when needed.
           </p>
 
           <div className="landing-hero-actions">
             <Link to="/signup" className="landing-button landing-button-primary">
-              Start a project <ArrowRight size={17} />
+              <Zap size={17} fill="currentColor" /> Start Free
             </Link>
             <a href="#workflow" className="landing-button landing-button-ghost">
-              <Play size={16} fill="currentColor" /> View workflow
+              <Play size={16} fill="currentColor" /> Watch Demo
             </a>
           </div>
 
@@ -100,7 +102,6 @@ export function HeroSection() {
                 <div className="landing-panel-heading">
                   <ScanSearch size={15} /> Segment Recolor
                 </div>
-                <div className="landing-panel-note">Lineart-preserving propagation completed.</div>
                 <div className="landing-panel-metrics">
                   <div><small>FRAME</small><strong>#3</strong></div>
                   <div><small>CONFIDENCE</small><strong>95%</strong></div>

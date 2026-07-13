@@ -28,8 +28,8 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
     <aside
       style={{
         width: 228, minWidth: 228,
-        background: "linear-gradient(180deg,#EFF6FF,#F0F4FF)",
-        borderRight: "1px solid #E2E8F0",
+        background: "linear-gradient(180deg,#0B0B14,#10101A)",
+        borderRight: "1px solid #2A2A40",
         display: "flex", flexDirection: "column", overflow: "hidden",
       }}
     >
@@ -40,7 +40,7 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
 
       {/* Project breadcrumb */}
       <div style={{ padding: "8px 14px 0", flexShrink: 0 }}>
-        <Link to="/projects" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#64748B", textDecoration: "none", padding: "5px 7px", borderRadius: 7, background: "rgba(255,255,255,0.6)" }}>
+        <Link to="/projects" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#F5F3FF", textDecoration: "none", padding: "5px 7px", borderRadius: 7, background: "rgba(26,26,38,0.72)", border: "1px solid #2A2A40" }}>
            <FolderOpen size={11} />
            <span>{projectName || "Untitled Project"}</span>
            <ChevronRight size={10} style={{ marginLeft: "auto" }} />
@@ -51,24 +51,24 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
       <div style={{ padding: "12px 14px 6px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <LayoutGrid size={11} color="#64748B" />
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1 }}>Frames</span>
+            <LayoutGrid size={11} color="#F5F3FF" />
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#F5F3FF", textTransform: "uppercase", letterSpacing: 1 }}>Frames</span>
           </div>
-          <span style={{ fontSize: 9, color: "#94A3B8", background: "#E2E8F0", padding: "1px 5px", borderRadius: 100 }}>
+          <span style={{ fontSize: 9, color: "#C084FC", background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.3)", padding: "1px 5px", borderRadius: 100 }}>
             {uncoloredFiles.length}
           </span>
         </div>
       </div>
 
       {/* Frame grid */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "0 10px", scrollbarWidth: "thin" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 10px", scrollbarWidth: "thin", background: "#050714" }}>
         {uncoloredFiles.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 12px", textAlign: "center" }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
-              <FileImage size={18} color="#CBD5E1" />
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#181827", border: "1px solid #2A2A40", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 }}>
+              <FileImage size={18} color="#7E86A4" />
             </div>
-            <p style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8", margin: "0 0 3px" }}>No frames yet</p>
-            <p style={{ fontSize: 10, color: "#CBD5E1", margin: 0 }}>Import uncolored files below</p>
+            <p style={{ fontSize: 11, fontWeight: 600, color: "#F5F3FF", margin: "0 0 3px" }}>No frames yet</p>
+            <p style={{ fontSize: 10, color: "#7E86A4", margin: 0 }}>Import uncolored files below</p>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, paddingBottom: 8, paddingTop: 4 }}>
@@ -77,13 +77,13 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                 onClick={openReferencePreview}
                 style={{
                   gridColumn: "1 / -1",
-                  border: showReferencePreview ? "2px solid #3B82F6" : "1.5px solid #93C5FD",
+                  border: showReferencePreview ? "2px solid #FF2E9A" : "1.5px solid #7C3AED",
                   borderRadius: 9,
                   overflow: "hidden",
                   cursor: "pointer",
                   padding: 0,
-                  background: "#EFF6FF",
-                  boxShadow: showReferencePreview ? "0 0 0 2px rgba(59,130,246,0.16)" : "0 1px 4px rgba(0,0,0,0.06)",
+                  background: "rgba(124,58,237,0.13)",
+                  boxShadow: showReferencePreview ? "0 0 0 2px rgba(255,46,154,0.24)" : "0 1px 4px rgba(0,0,0,0.06)",
                   position: "relative",
                   textAlign: "left",
                 }}
@@ -91,12 +91,12 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                 <div style={{ display: "flex", alignItems: "stretch" }}>
                   <img src={referenceImage.paintUrl} alt="Reference" style={{ width: 72, height: 56, objectFit: "cover", display: "block", flexShrink: 0 }} />
                   <div style={{ padding: "7px 8px", minWidth: 0, flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, color: "#2563EB", marginBottom: 3 }}>
-                      <Star size={9} fill="#2563EB" />
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, color: "#C084FC", marginBottom: 3 }}>
+                      <Star size={9} fill="#C084FC" />
                       <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.6 }}>REFERENCE IMAGE</span>
                     </div>
-                    <div style={{ fontSize: 9, fontWeight: 600, color: "#1E293B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{referenceImage.name}</div>
-                    <div style={{ fontSize: 8, color: "#64748B", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: "#F5F3FF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{referenceImage.name}</div>
+                    <div style={{ fontSize: 8, color: "#AAB2D5", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
                       <Eye size={8} /> Click to preview · linked to Frame {Math.max(1, uncoloredFiles.findIndex((frame) => frame.id === referenceImage.id) + 1)}
                     </div>
                   </div>
@@ -112,11 +112,11 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                   onClick={() => handleFrameChange(i)}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ frameIndex: i, x: e.clientX, y: e.clientY }); }}
                   style={{
-                    border: isActive ? "2px solid #3B82F6" : frameRefMap[i] ? "1.5px solid #F59E0B" : "1.5px solid transparent",
+                    border: isActive ? "2px solid #FF2E9A" : frameRefMap[i] ? "1.5px solid #F59E0B" : "1.5px solid #2A2A40",
                     borderRadius: 8, overflow: "hidden", cursor: "pointer", padding: 0,
-                    background: isActive ? "#EFF6FF" : "white",
+                    background: isActive ? "rgba(255,46,154,0.1)" : "#181827",
                     position: "relative",
-                    boxShadow: isActive ? "0 0 0 2px rgba(59,130,246,0.18)" : "0 1px 4px rgba(0,0,0,0.06)",
+                    boxShadow: isActive ? "0 0 0 2px rgba(255,46,154,0.28), 0 4px 12px rgba(255,46,154,0.16)" : "0 1px 4px rgba(0,0,0,0.06)",
                     transition: "all 0.1s",
                   }}
                 >
@@ -137,8 +137,8 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                       <img src={frameRefMap[i].paintUrl || frameRefMap[i].url} alt="ref" style={{ width: 10, height: 10, borderRadius: 2, objectFit: "cover" }} />
                     </div>
                   )}
-                  <div style={{ background: isActive ? "#EFF6FF" : "#F8FAFF", padding: "2px 4px", borderTop: "1px solid #F1F5F9" }}>
-                    <span style={{ fontSize: 8, color: isActive ? "#3B82F6" : "#94A3B8", fontWeight: isActive ? 700 : 400 }}>{i + 1}s</span>
+                  <div style={{ background: isActive ? "rgba(255,46,154,0.14)" : "#11111B", padding: "2px 4px", borderTop: "1px solid #2A2A40" }}>
+                    <span style={{ fontSize: 8, color: isActive ? "#FF2E9A" : "#AAB2D5", fontWeight: isActive ? 700 : 400 }}>{i + 1}s</span>
                   </div>
                 </button>
               );
@@ -148,17 +148,17 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
       </div>
 
       {/* Bottom import buttons */}
-      <div style={{ padding: "8px 10px", flexShrink: 0, borderTop: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: 5 }}>
+      <div style={{ padding: "8px 10px", flexShrink: 0, borderTop: "1px solid #2A2A40", display: "flex", flexDirection: "column", gap: 5 }}>
         <button
           onClick={() => !isImporting && uncoloredInputRef.current?.click()}
           disabled={isImporting}
-          style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 9, border: "1.5px solid #E2E8F0", background: "white", cursor: isImporting ? "wait" : "pointer", opacity: isImporting ? 0.65 : 1, fontFamily: "'Inter',sans-serif", width: "100%", textAlign: "left" }}
+          style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 9, border: "1.5px solid #2A2A40", background: "#181827", cursor: isImporting ? "wait" : "pointer", opacity: isImporting ? 0.65 : 1, fontFamily: "'Inter',sans-serif", width: "100%", textAlign: "left" }}
         >
-          <div style={{ width: 22, height: 22, borderRadius: 5, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ width: 22, height: 22, borderRadius: 5, background: "#181827", border: "1px solid #2A2A40", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <List size={11} color="#64748B" />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "#1E293B" }}>{isImporting ? "Importing..." : "Import Uncolored Files"}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: "#F5F3FF" }}>{isImporting ? "Importing..." : "Import Uncolored Files"}</div>
             <div style={{ fontSize: 8, color: "#94A3B8" }}>{isImporting ? "Please wait" : `${uncoloredFiles.length} loaded`}</div>
           </div>
         </button>
@@ -167,20 +167,20 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
           onClick={openReferenceModal}
           style={{
             display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 9,
-            border: referenceImage ? "1.5px solid #3B82F6" : "1.5px solid #E2E8F0",
-            background: referenceImage ? "#EFF6FF" : "white",
+            border: referenceImage ? "1.5px solid #FF2E9A" : "1.5px solid #2A2A40",
+            background: referenceImage ? "rgba(255,46,154,0.1)" : "#181827",
             cursor: "pointer", fontFamily: "'Inter',sans-serif", width: "100%", textAlign: "left",
           }}
         >
           {referenceImage ? (
-            <img src={referenceImage.paintUrl || referenceImage.url} alt="ref" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover", flexShrink: 0, border: "1px solid #BFDBFE" }} />
+            <img src={referenceImage.paintUrl || referenceImage.url} alt="ref" style={{ width: 22, height: 22, borderRadius: 4, objectFit: "cover", flexShrink: 0, border: "1px solid rgba(255,46,154,0.45)" }} />
           ) : (
-            <div style={{ width: 22, height: 22, borderRadius: 5, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 5, background: "#181827", border: "1px solid #2A2A40", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <ImageIcon size={11} color="#64748B" />
             </div>
           )}
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, color: referenceImage ? "#3B82F6" : "#1E293B" }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: referenceImage ? "#FF52AE" : "#F5F3FF" }}>
               {referenceImage ? "Reference Set" : "Import Reference"}
             </div>
             <div style={{ fontSize: 8, color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -200,11 +200,11 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
 
       {/* Upgrade card */}
       <div style={{ padding: "0 10px 12px", flexShrink: 0 }}>
-        <a href="/#pricing" style={{ display: "block", background: "linear-gradient(135deg,#1E293B,#0F172A)", borderRadius: 12, padding: "12px", textDecoration: "none" }}>
+        <a href="/#pricing" style={{ display: "block", background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", borderRadius: 12, padding: "12px", textDecoration: "none" }}>
           <Crown size={15} color="#F59E0B" style={{ marginBottom: 4 }} />
           <p style={{ fontSize: 11, fontWeight: 700, color: "white", marginBottom: 2 }}>Upgrade to Pro</p>
-          <p style={{ fontSize: 9, color: "#64748B", lineHeight: 1.5, marginBottom: 8 }}>1080p, MP4, no watermark.</p>
-          <div style={{ width: "100%", padding: "6px", borderRadius: 6, background: "#F59E0B", textAlign: "center", color: "#1E293B", fontWeight: 700, fontSize: 10 }}>
+          <p style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.5, marginBottom: 8 }}>Higher limits and faster processing.</p>
+          <div style={{ width: "100%", padding: "6px", borderRadius: 6, background: "#F59E0B", textAlign: "center", color: "#F5F3FF", fontWeight: 700, fontSize: 10 }}>
             See Pro Plans →
           </div>
         </a>

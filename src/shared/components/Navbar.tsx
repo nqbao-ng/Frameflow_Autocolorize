@@ -5,6 +5,7 @@ export function Navbar() {
   const navItems = [
     { name: "Features", href: "#features" },
     { name: "Workflow", href: "#workflow" },
+    { name: "Pricing", href: "#pricing" },
     { name: "Human Review", href: "#review" },
   ];
 
@@ -26,7 +27,7 @@ export function Navbar() {
             Sign In
           </Link>
           <Link to="/signup" className="landing-button landing-button-primary landing-button-small">
-            Start Free
+            Sign Up
           </Link>
         </div>
       </div>

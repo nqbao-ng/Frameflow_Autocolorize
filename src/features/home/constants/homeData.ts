@@ -95,13 +95,14 @@ export const REVIEW_POINTS = [
 ];
 
 export const HERO_TRUST_BADGES = [
-  "Original lineart preserved",
-  "Human-controlled corrections",
-  "PNG and ZIP export",
+  "No credit card required",
+  "Free forever plan",
+  "Export in seconds",
 ];
 
 export const FOOTER_NAV_LINKS = [
   { label: "Features", href: "#features" },
   { label: "Workflow", href: "#workflow" },
+  { label: "Pricing", href: "#pricing" },
   { label: "Human Review", href: "#review" },
 ];
