@@ -9,6 +9,8 @@ export interface PaintCanvasHandle {
   getFlattenedDataUrl: () => string | null;
   /** Returns only the editable paint/color layer. Used when switching frames. */
   getPaintLayerDataUrl: () => string | null;
+  /** Recolors one encoded segment directly on the editable layer. */
+  recolorSegment: (segmentId: number, colorHex: string, opacityOverride?: number) => boolean;
 }
 
 interface PaintCanvasProps {
@@ -29,6 +31,12 @@ interface PaintCanvasProps {
   smudgeStrength?: number;
   dodgeExposure?: number;
   burnExposure?: number;
+  segmentMapUrl?: string | null;
+  selectedSegmentId?: number | null;
+  segmentPickMode?: boolean;
+  onSegmentPicked?: (segmentId: number) => void;
+  lowConfidenceOverlayUrl?: string | null;
+  showLowConfidenceOverlay?: boolean;
 }
 
 export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(function PaintCanvas({
@@ -46,16 +54,102 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
   onStroke,
   onBeforeStroke,
   canvasRef,
+  smudgeStrength = 50,
+  dodgeExposure = 50,
+  burnExposure = 50,
+  segmentMapUrl = null,
+  selectedSegmentId = null,
+  segmentPickMode = false,
+  onSegmentPicked,
+  lowConfidenceOverlayUrl = null,
+  showLowConfidenceOverlay = false,
 }: PaintCanvasProps, ref: React.Ref<PaintCanvasHandle>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLCanvasElement>(null);
   const colorRef = useRef<HTMLCanvasElement>(null);
+  const segmentHighlightRef = useRef<HTMLCanvasElement>(null);
+  const segmentMapCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const painting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
   const pointBuffer = useRef<{ x: number; y: number }[]>([]);
 
   const paintTarget = (): HTMLCanvasElement =>
     canvasRef.current!;
+
+  const decodeSegmentId = (data: Uint8ClampedArray, index: number) =>
+    data[index] + (data[index + 1] << 8) + (data[index + 2] << 16);
+
+  const getSegmentIdAt = (x: number, y: number): number | null => {
+    const mapCanvas = segmentMapCanvasRef.current;
+    if (!mapCanvas) return null;
+    const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true });
+    if (!mapCtx) return null;
+    const px = Math.floor(Math.max(0, Math.min(mapCanvas.width - 1, x)));
+    const py = Math.floor(Math.max(0, Math.min(mapCanvas.height - 1, y)));
+    const data = mapCtx.getImageData(px, py, 1, 1).data;
+    const id = decodeSegmentId(data, 0);
+    return id > 0 ? id : null;
+  };
+
+  const drawSelectedSegmentHighlight = () => {
+    const overlay = segmentHighlightRef.current;
+    const mapCanvas = segmentMapCanvasRef.current;
+    if (!overlay || !mapCanvas) return;
+
+    overlay.width = mapCanvas.width;
+    overlay.height = mapCanvas.height;
+    const outCtx = overlay.getContext("2d")!;
+    outCtx.clearRect(0, 0, overlay.width, overlay.height);
+
+    if (!selectedSegmentId) return;
+
+    const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true });
+    if (!mapCtx) return;
+    const src = mapCtx.getImageData(0, 0, mapCanvas.width, mapCanvas.height);
+    const dst = outCtx.createImageData(mapCanvas.width, mapCanvas.height);
+    const sd = src.data;
+    const dd = dst.data;
+    for (let i = 0; i < sd.length; i += 4) {
+      const id = decodeSegmentId(sd, i);
+      if (id === selectedSegmentId) {
+        dd[i] = 59;
+        dd[i + 1] = 130;
+        dd[i + 2] = 246;
+        dd[i + 3] = 95;
+      }
+    }
+    outCtx.putImageData(dst, 0, 0);
+  };
+
+  const recolorSegmentOnCanvas = (segmentId: number, colorHex: string, opacityOverride?: number): boolean => {
+    const mapCanvas = segmentMapCanvasRef.current;
+    const cv = canvasRef.current;
+    if (!mapCanvas || !cv || !segmentId) return false;
+
+    const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true });
+    const paintCtx = cv.getContext("2d", { willReadFrequently: true });
+    if (!mapCtx || !paintCtx) return false;
+
+    const mapData = mapCtx.getImageData(0, 0, mapCanvas.width, mapCanvas.height).data;
+    const paintId = paintCtx.getImageData(0, 0, cv.width, cv.height);
+    const pd = paintId.data;
+    const { r, g, b } = hexToRgb(colorHex);
+    const alpha = Math.round((Math.min(100, Math.max(0, opacityOverride ?? opacity)) / 100) * 255);
+    let changed = false;
+
+    for (let i = 0; i < mapData.length; i += 4) {
+      const id = decodeSegmentId(mapData, i);
+      if (id !== segmentId) continue;
+      pd[i] = r;
+      pd[i + 1] = g;
+      pd[i + 2] = b;
+      pd[i + 3] = alpha;
+      changed = true;
+    }
+
+    if (changed) paintCtx.putImageData(paintId, 0, 0);
+    return changed;
+  };
 
   // ── Expose flattened canvas to parent ─────────────────────────────────────
   useImperativeHandle(ref, () => ({
@@ -100,7 +194,8 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
       if (!hasVisiblePixel) return null;
       return cv.toDataURL("image/png");
     },
-    }), []);
+    recolorSegment: recolorSegmentOnCanvas,
+    }), [opacity]);
 
   const fillBaseLayer = (width: number, height: number) => {
     const base = colorRef.current;
@@ -196,12 +291,52 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
         canvasRef.current.width = W;
         canvasRef.current.height = H;
       }
+      if (segmentHighlightRef.current) {
+        segmentHighlightRef.current.width = W;
+        segmentHighlightRef.current.height = H;
+        segmentHighlightRef.current.getContext("2d")?.clearRect(0, 0, W, H);
+      }
       fillBaseLayer(W, H);
       drawTransparentLineart(img, lineCanvas);
       loadPaintLayer(paintUrl);
     };
     img.src = imageUrl;
   }, [imageUrl, paintUrl]);
+
+  useEffect(() => {
+    if (!segmentMapUrl) {
+      segmentMapCanvasRef.current = null;
+      segmentHighlightRef.current?.getContext("2d")?.clearRect(
+        0,
+        0,
+        segmentHighlightRef.current.width,
+        segmentHighlightRef.current.height,
+      );
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const mapCanvas = document.createElement("canvas");
+      mapCanvas.width = cv.width;
+      mapCanvas.height = cv.height;
+      const mapCtx = mapCanvas.getContext("2d", { willReadFrequently: true })!;
+      mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+      mapCtx.drawImage(img, 0, 0, mapCanvas.width, mapCanvas.height);
+      segmentMapCanvasRef.current = mapCanvas;
+      drawSelectedSegmentHighlight();
+    };
+    img.src = segmentMapUrl;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentMapUrl, imageUrl]);
+
+  useEffect(() => {
+    drawSelectedSegmentHighlight();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSegmentId, segmentMapUrl]);
 
   // ── Coordinate mapping ─────────────────────────────────────────────────────
   const getPos = (e: React.MouseEvent) => {
@@ -604,6 +739,12 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     const cv = paintTarget();
     const ctx = cv.getContext("2d")!;
 
+    if (segmentPickMode) {
+      const id = getSegmentIdAt(pos.x, pos.y);
+      if (id && onSegmentPicked) onSegmentPicked(id);
+      return;
+    }
+
     if (tool === "fill") {
       onBeforeStroke();
       doFloodFill(ctx, pos.x, pos.y);
@@ -637,13 +778,13 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
       drawPencil(ctx, lastPos.current, pos);
       lastPos.current = pos;
     } else if (tool === "smudge") {
-      drawSmudge(ctx, lastPos.current, pos);
+      drawSmudge(ctx, lastPos.current, pos, smudgeStrength);
       lastPos.current = pos;
     } else if (tool === "dodge") {
-      drawDodge(ctx, lastPos.current, pos);
+      drawDodge(ctx, lastPos.current, pos, dodgeExposure);
       lastPos.current = pos;
     } else if (tool === "burn") {
-      drawBurn(ctx, lastPos.current, pos);
+      drawBurn(ctx, lastPos.current, pos, burnExposure);
       lastPos.current = pos;
     } else {
       pointBuffer.current.push(pos);
@@ -666,6 +807,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
 
   // ── Custom cursor ──────────────────────────────────────────────────────────
   const getCursor = () => {
+    if (segmentPickMode) return "crosshair";
     if (tool === "picker") return "crosshair";
     if (tool === "fill") return "cell";
     const sz = Math.max(8, Math.min(64, brushSize));
@@ -731,6 +873,34 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
           height: "100%",
           objectFit: "contain",
           zIndex: 3,
+          pointerEvents: "none",
+        }}
+      />
+      {showLowConfidenceOverlay && lowConfidenceOverlayUrl && (
+        <img
+          src={lowConfidenceOverlayUrl}
+          alt="Low confidence overlay"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            zIndex: 4,
+            pointerEvents: "none",
+            opacity: 0.46,
+          }}
+        />
+      )}
+      <canvas
+        ref={segmentHighlightRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+          zIndex: 5,
           pointerEvents: "none",
         }}
       />

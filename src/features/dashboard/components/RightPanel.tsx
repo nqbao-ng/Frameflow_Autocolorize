@@ -40,6 +40,7 @@ export function RightPanel({ ctx }: RightPanelProps) {
     spill, setSpill,
     tones, setTones,
     handleAutoColor,
+    handleCorrectionKeyframeAndRecolorNextFrames,
     referenceImage,
     addToast,
     isColoring,
@@ -92,16 +93,11 @@ export function RightPanel({ ctx }: RightPanelProps) {
               </div>
 
               <button
-                onClick={() => {
-                  if (!referenceImage) {
-                    addToast("❌ Vui lòng chọn ảnh tham chiếu trước!", "error");
-                    return;
-                  }
-                  addToast("ℹ️ AI Color This Frame đang tạm khóa. Hoàn thành Auto Color Sequence trước, rồi mở rộng tính năng này sau.", "info", 6000);
-                }}
-                style={{ width: "100%", padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 2px 8px rgba(139,92,246,0.3)", fontFamily: "'Inter',sans-serif", marginBottom: 5 }}
+                onClick={handleCorrectionKeyframeAndRecolorNextFrames}
+                disabled={isColoring}
+                style={{ width: "100%", padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white", fontWeight: 700, fontSize: 11, cursor: isColoring ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 2px 8px rgba(139,92,246,0.3)", fontFamily: "'Inter',sans-serif", marginBottom: 5, opacity: isColoring ? 0.75 : 1 }}
               >
-                <Wand2 size={12} />AI Color This Frame
+                <Wand2 size={12} />Correction Keyframe & Continue
               </button>
 
                 <button

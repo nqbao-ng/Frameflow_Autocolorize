@@ -82,6 +82,7 @@ export default async function handler(req, res) {
       ? body.direction
       : 'forward';
     const overwriteExisting = body.overwriteExisting ?? body.overwrite_existing ?? true;
+    const clientSettings = body.settings && typeof body.settings === 'object' ? body.settings : {};
 
     if (!projectId) return sendError(res, 400, 'projectId is required');
 
@@ -140,7 +141,9 @@ export default async function handler(req, res) {
           processing_frame_ids: processingFrameIds,
           processing_direction: direction,
           overwrite_existing: Boolean(overwriteExisting),
-          reference_strategy: 'nearest_colored_neighbor',
+          reference_strategy: 'anchored_plus_nearest_safe',
+          trusted_reference_min_confidence: 0.6,
+          review_every_n_frames: 0,
           backend: 'frameflow_cv_service',
           ai_runtime: 'bedrock_vision_optional_for_suggestions_only',
           generation_api: 'none',
@@ -156,6 +159,9 @@ export default async function handler(req, res) {
           use_flow: true,
           line_mode: 'original',
           max_low_confidence: 20,
+          use_role_memory: true,
+          role_memory_override_max_confidence: 0.82,
+          ...clientSettings,
           created_from: 'FrameFlow correction reference workflow',
         },
       })

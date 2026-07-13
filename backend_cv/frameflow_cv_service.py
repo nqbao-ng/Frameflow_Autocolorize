@@ -399,6 +399,22 @@ def create_rainbow_segments(a: FrameAnalysis) -> np.ndarray:
     return out
 
 
+
+
+def create_encoded_segment_map(a: FrameAnalysis) -> np.ndarray:
+    """RGB label map used by the web editor for exact click-to-segment recolor.
+
+    Encoding: segment_id = R + (G << 8) + (B << 16).
+    Label 0 remains black and means line/background/no selectable segment.
+    """
+    out = np.zeros((a.height, a.width, 3), dtype=np.uint8)
+    labels = np.clip(a.labels.astype(np.int64), 0, 16_777_215)
+    out[..., 0] = (labels & 255).astype(np.uint8)
+    out[..., 1] = ((labels >> 8) & 255).astype(np.uint8)
+    out[..., 2] = ((labels >> 16) & 255).astype(np.uint8)
+    out[a.line_mask_raw] = np.array([0, 0, 0], dtype=np.uint8)
+    return out
+
 def draw_segment_ids(base_rgb: np.ndarray, a: FrameAnalysis, max_ids: int = 300) -> np.ndarray:
     img = Image.fromarray(base_rgb.astype(np.uint8), mode="RGB")
     draw = ImageDraw.Draw(img)
@@ -708,6 +724,7 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
         colorized = render_colorized(curr_analysis, colors, line_mode=cfg.line_mode)
         overlay = confidence_overlay(colorized, curr_analysis, conf, cfg.low_confidence_threshold)
         segment_ids = draw_segment_ids(create_rainbow_segments(curr_analysis), curr_analysis)
+        encoded_segment_map = create_encoded_segment_map(curr_analysis)
         segments = build_segment_records(curr_analysis, colors, conf, match)
         confidence_score = float(np.mean([conf.get(s.segment_id, 0.0) for s in curr_analysis.segments])) if curr_analysis.segments else 0.0
 
@@ -726,6 +743,7 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
                 "colorized_png_base64": png_b64(colorized),
                 "low_confidence_overlay_png_base64": png_b64(overlay),
                 "segment_ids_png_base64": png_b64(segment_ids),
+                "encoded_segment_map_png_base64": png_b64(encoded_segment_map),
                 "segments_json_base64": json_b64(segments),
             },
             "debug": {

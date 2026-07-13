@@ -95,6 +95,12 @@ export function Dashboard() {
               smudgeStrength={ctx.smudgeStrength}
               dodgeExposure={ctx.dodgeExposure}
               burnExposure={ctx.burnExposure}
+              segmentMapUrl={ctx.frameReview?.job_frame?.labels_asset_url || null}
+              selectedSegmentId={ctx.selectedSegmentId}
+              segmentPickMode={ctx.segmentPickMode}
+              onSegmentPicked={ctx.handleSegmentPicked}
+              lowConfidenceOverlayUrl={ctx.frameReview?.job_frame?.low_confidence_overlay_url || null}
+              showLowConfidenceOverlay={ctx.showLowConfidenceOverlay}
             />
 
             {/* Frame counter badge */}

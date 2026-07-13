@@ -58,6 +58,7 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
     handleUndo,
     handleRedo,
     handleSaveCurrentFrame,
+    handleCorrectionKeyframeAndRecolorNextFrames,
   } = ctx;
 
   const canUndo = (undoStack[activeFrame]?.length ?? 0) > 0;
@@ -156,10 +157,22 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
           {isColoring ? "Coloring…" : "AI Auto Color"}
         </button>
 
-        {/* Propagate */}
-        <button style={baseBtn}>
+        {/* Correction keyframe + propagate */}
+        <button
+          onClick={handleCorrectionKeyframeAndRecolorNextFrames}
+          disabled={isColoring}
+          title="Save this frame as a correction keyframe and recolor following frames"
+          style={{
+            ...baseBtn,
+            border: "1px solid #C7D2FE",
+            background: isColoring ? "#F8FAFC" : "#EEF2FF",
+            color: isColoring ? "#94A3B8" : "#3730A3",
+            fontWeight: 700,
+            cursor: isColoring ? "not-allowed" : "pointer",
+          }}
+        >
           <Forward size={11} />
-          Propagate
+          Correct & Continue
         </button>
 
         {/* Export */}

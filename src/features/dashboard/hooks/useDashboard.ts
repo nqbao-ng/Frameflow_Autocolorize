@@ -16,7 +16,9 @@ import {
 import type { ToastMessage } from "../components/Toast";
 import {
   continueColorizationJob,
+  getFrameReviewState,
   startColorizationJob,
+  type ReviewState,
 } from "../services/colorization.api";
 
 function normalizeImportedFrame(frame: any): ImportedFile {
@@ -123,6 +125,11 @@ export function useDashboard() {
 
   // AI
   const [isColoring, setIsColoring] = useState(false);
+  const [frameReview, setFrameReview] = useState<ReviewState | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
+  const [segmentPickMode, setSegmentPickMode] = useState(false);
+  const [showLowConfidenceOverlay, setShowLowConfidenceOverlay] = useState(false);
   const [improveEdge, setImproveEdge] = useState(true);
   const [preserveLines, setPreserveLines] = useState(true);
   const [skinTone, setSkinTone] = useState(true);
@@ -242,6 +249,89 @@ export function useDashboard() {
     }
   }, [activeFrame, addToast, projectId, uncoloredFiles]);
 
+  const loadFrameReview = useCallback(async (): Promise<ReviewState | null> => {
+    const frameId = uncoloredFiles[activeFrame]?.id;
+
+    if (!projectId || !frameId) {
+      setFrameReview(null);
+      setSelectedSegmentId(null);
+      return null;
+    }
+
+    try {
+      setReviewLoading(true);
+      const data = await getFrameReviewState({ projectId, frameId });
+      setFrameReview(data);
+
+      setSelectedSegmentId((prev) => {
+        const ids = (data.segments || [])
+          .map((segment) => Number(segment.segment_id))
+          .filter((id) => Number.isFinite(id) && id > 0);
+
+        if (prev && ids.includes(prev)) return prev;
+        return ids[0] ?? null;
+      });
+
+      return data;
+    } catch (error) {
+      console.warn("FRAME REVIEW STATE ERROR:", error);
+      setFrameReview(null);
+      setSelectedSegmentId(null);
+      return null;
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [activeFrame, projectId, uncoloredFiles]);
+
+  useEffect(() => {
+    void loadFrameReview();
+  }, [loadFrameReview]);
+
+  const handleSegmentPicked = useCallback((segmentId: number) => {
+    setSelectedSegmentId(segmentId);
+    setSegmentPickMode(false);
+    addToast(`✅ Đã chọn segment ${segmentId}`, "success", 2500);
+  }, [addToast]);
+
+  const handleRecolorSelectedSegment = useCallback((
+    segmentId?: number | null,
+    colorHex?: string | null,
+    roleId?: string | null,
+  ) => {
+    const pickedSegmentId = Number(segmentId ?? selectedSegmentId);
+
+    if (!Number.isFinite(pickedSegmentId) || pickedSegmentId <= 0) {
+      addToast("❌ Chưa chọn segment để recolor", "error", 4500);
+      return false;
+    }
+
+    if (!colorHex) {
+      addToast("❌ Chưa chọn màu để recolor", "error", 4500);
+      return false;
+    }
+
+    pushUndoSnapshot();
+    const changed = paintCanvasRef.current?.recolorSegment(pickedSegmentId, colorHex, opacity) ?? false;
+
+    if (!changed) {
+      addToast("❌ Frame này chưa có segment map. Hãy chạy Auto Color trước rồi chọn vùng lại.", "error", 7000);
+      return false;
+    }
+
+    setFrameStates((prev) => {
+      const next = [...prev];
+      next[activeFrame] = "manual";
+      return next;
+    });
+    saveCurrentFrame();
+    addToast(
+      `🎨 Đã recolor segment ${pickedSegmentId}${roleId ? ` (${roleId})` : ""}`,
+      "success",
+      3000,
+    );
+    return true;
+  }, [activeFrame, addToast, opacity, pushUndoSnapshot, saveCurrentFrame, selectedSegmentId]);
+
   const handleUndo = useCallback(() => {
     const stack = undoStack[activeFrame] || [];
     if (stack.length === 0) return;
@@ -355,6 +445,190 @@ export function useDashboard() {
   };
 
   // ── AI handlers ────────────────────────────────────────────────────────────
+  const buildColorizationSettings = useCallback(() => ({
+    reference_strategy: "anchored_plus_nearest_safe",
+    trusted_reference_min_confidence: 0.6,
+    use_role_memory: true,
+    role_memory_override_max_confidence: skinTone ? 0.86 : 0.82,
+    max_low_confidence: improveEdge ? 14 : 22,
+    preserve_line_art: preserveLines,
+    improve_edge_detection: improveEdge,
+    adaptive_threshold: improveEdge,
+    line_mode: preserveLines ? "original" : "black",
+    smart_skin_tone: skinTone,
+    image_adjustments: {
+      brightness,
+      contrast: contrastVal,
+      saturation,
+      blur,
+      color_spill_reduction: spill,
+      tone_rebalance: tones,
+    },
+  }), [brightness, contrastVal, improveEdge, preserveLines, saturation, skinTone, blur, spill, tones]);
+
+  const handleCorrectionKeyframeAndRecolorNextFrames = useCallback(async () => {
+    if (!projectId) {
+      addToast("❌ Không tìm thấy project hiện tại", "error");
+      return;
+    }
+
+    const currentFrame = uncoloredFiles[activeFrame];
+    if (!currentFrame) {
+      addToast("❌ Không tìm thấy frame hiện tại", "error");
+      return;
+    }
+
+    try {
+      setIsColoring(true);
+      addToast("⏳ Đang lưu frame hiện tại thành correction keyframe...", "info", 6000);
+
+      const savedUrl = await handleSaveCurrentFrame();
+      if (!savedUrl) {
+        addToast("❌ Không lưu được correction keyframe. Hãy thử bấm Save trước.", "error", 7000);
+        return;
+      }
+
+      const correctionReference: ImportedFile = {
+        ...currentFrame,
+        paintUrl: savedUrl,
+      };
+
+      setReferenceImage(correctionReference);
+      setFrameRefMap((prev) => ({ ...prev, [activeFrame]: correctionReference }));
+      setUncoloredFiles((prev) =>
+        prev.map((item, index) =>
+          index === activeFrame ? { ...item, paintUrl: savedUrl } : item,
+        ),
+      );
+      setFrameStates((prev) => {
+        const next = [...prev];
+        next[activeFrame] = "manual";
+        return next;
+      });
+
+      const targetIndices = buildForwardTargetIndices(
+        activeFrame,
+        paintableFrames,
+        uncoloredFiles.length,
+      );
+
+      const targetFrameIds = Array.from(
+        new Set(
+          targetIndices
+            .map((index) => uncoloredFiles[index]?.id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+
+      if (targetFrameIds.length === 0) {
+        addToast("✅ Correction keyframe đã lưu. Không có frame phía sau để recolor.", "success", 6000);
+        await refreshFrames();
+        await loadFrameReview();
+        return;
+      }
+
+      addToast(
+        `⏳ Recolor ${targetFrameIds.length} frame phía sau bằng correction keyframe...`,
+        "info",
+        8000,
+      );
+
+      const started = await startColorizationJob({
+        projectId,
+        referenceFrameId: currentFrame.id,
+        targetFrameIds,
+        direction: "forward",
+        overwriteExisting: true,
+        settings: buildColorizationSettings(),
+      });
+
+      let jobId = started.job.id;
+      let lastStatus = started.job.status;
+      let totalProcessed = 0;
+      let noProgressCount = 0;
+      const maxIterations = targetFrameIds.length + 3;
+
+      for (let step = 0; step < maxIterations; step += 1) {
+        const continued = await continueColorizationJob({
+          projectId,
+          jobId,
+          maxSteps: 1,
+        });
+
+        jobId = continued.job.id;
+        lastStatus = continued.status;
+        const processedNow = Number(continued.processed_count || 0);
+        totalProcessed += processedNow;
+
+        const latestFrames = await refreshFrames();
+
+        if (continued.frame_id) {
+          const changedIndex = latestFrames.findIndex(
+            (frame) => frame.id === continued.frame_id,
+          );
+          if (changedIndex >= 0) {
+            setFrameStates((prev) => {
+              const next = [...prev];
+              next[changedIndex] = "ai";
+              return next;
+            });
+          }
+        }
+
+        if (
+          continued.status === "needs_review_not_reference" ||
+          continued.status === "waiting_review"
+        ) {
+          const reviewFrameId =
+            continued.frame_id || continued.job.current_review_frame_id || null;
+
+          if (reviewFrameId) {
+            const reviewIndex = latestFrames.findIndex(
+              (frame) => frame.id === reviewFrameId,
+            );
+            if (reviewIndex >= 0) {
+              handleFrameChange(reviewIndex);
+            }
+          }
+          break;
+        }
+
+        if (continued.status === "completed") break;
+
+        if (processedNow === 0) noProgressCount += 1;
+        else noProgressCount = 0;
+
+        if (noProgressCount >= 2) {
+          throw new Error("Recolor không có tiến triển. Kiểm tra /api/colorization/continue.");
+        }
+      }
+
+      await refreshFrames();
+      await loadFrameReview();
+
+      if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
+        addToast("⚠️ Recolor dừng ở frame cần Review/Correction", "info", 8000);
+      } else {
+        addToast(`✅ Đã recolor ${totalProcessed} frame phía sau correction keyframe`, "success", 7000);
+      }
+    } catch (error) {
+      console.error("CORRECTION KEYFRAME RECOLOR ERROR:", error);
+      addToast(`❌ Lỗi Correction Keyframe: ${(error as Error).message}`, "error", 10000);
+    } finally {
+      setIsColoring(false);
+    }
+  }, [
+    activeFrame,
+    addToast,
+    buildColorizationSettings,
+    handleSaveCurrentFrame,
+    loadFrameReview,
+    paintableFrames,
+    projectId,
+    refreshFrames,
+    uncoloredFiles,
+  ]);
+
   const handleAutoColor = async () => {
     if (!projectId) {
       addToast("❌ Không tìm thấy project hiện tại", "error");
@@ -437,6 +711,7 @@ export function useDashboard() {
         targetFrameIds,
         direction: "forward",
         overwriteExisting: true,
+        settings: buildColorizationSettings(),
       });
 
       let jobId = started.job.id;
@@ -510,6 +785,7 @@ export function useDashboard() {
       }
 
       await refreshFrames();
+      await loadFrameReview();
 
       if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
         addToast("⚠️ Auto Color dừng ở frame cần Review/Correction", "info", 8000);
@@ -1043,6 +1319,15 @@ const handleCustomColoredUpload = async (
 
     // AI state
     isColoring,
+    frameReview,
+    reviewLoading,
+    loadFrameReview,
+    selectedSegmentId, setSelectedSegmentId,
+    segmentPickMode, setSegmentPickMode,
+    handleSegmentPicked,
+    handleRecolorSelectedSegment,
+    showLowConfidenceOverlay, setShowLowConfidenceOverlay,
+    handleCorrectionKeyframeAndRecolorNextFrames,
     improveEdge, setImproveEdge,
     preserveLines, setPreserveLines,
     skinTone, setSkinTone,

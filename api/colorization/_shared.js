@@ -299,6 +299,8 @@ export function buildCvSettings(jobSettings = {}) {
     max_low_confidence: Number(jobSettings.max_low_confidence ?? 20),
     min_review_area: Number(jobSettings.min_review_area ?? 120),
     min_review_area_ratio: Number(jobSettings.min_review_area_ratio ?? 0.0005),
+    use_role_memory: jobSettings.use_role_memory !== false,
+    role_memory_override_max_confidence: Number(jobSettings.role_memory_override_max_confidence ?? 0.82),
   };
 }
 
@@ -314,6 +316,7 @@ export function buildAssetPaths({ projectId, jobId, frameId, frameIndex, frameNa
     colorized: `${prefix}_colorized.png`,
     overlay: `${prefix}_low_confidence_overlay.png`,
     segmentIds: `${prefix}_segment_ids.png`,
+    encodedSegmentMap: `${prefix}_encoded_segment_map.png`,
     segmentsJson: `${prefix}_segments.json`,
   };
 }

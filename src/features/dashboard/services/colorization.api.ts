@@ -123,6 +123,7 @@ export async function startColorizationJob(input: {
   targetFrameIds?: string[];
   direction?: "forward" | "backward" | "both";
   overwriteExisting?: boolean;
+  settings?: Record<string, unknown>;
 }) {
   return requestJson<{
     ok: boolean;

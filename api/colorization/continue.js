@@ -56,12 +56,50 @@ async function resolveReferenceFrame(supabase, job, targetJobFrame) {
   const referenceFrameId = job.settings?.reference_frame_id || job.last_trusted_frame_id;
   const referenceIndex = Number(job.settings?.reference_frame_index ?? NaN);
   const targetIndex = Number(targetJobFrame.frame_index ?? 0);
+  const trustThreshold = Number(job.settings?.trusted_reference_min_confidence ?? 0.6);
+  const strategy = job.settings?.reference_strategy || 'anchored_plus_nearest_safe';
 
-  // Product rule:
-  // target sketch luôn dùng source_image_url gốc.
-  // reference luôn là colored frame gần nhất đã có colored_image_url.
-  // Với forward propagation: Frame 5 lấy Frame 4 đã tô, nếu có.
-  if (job.settings?.reference_strategy === 'nearest_colored_neighbor' && Number.isFinite(referenceIndex)) {
+  // Anchored propagation rule:
+  // 1) Prefer the nearest already trusted/corrected job frame.
+  // 2) Skip low-confidence generated frames as references.
+  // 3) Fall back to the original correction keyframe so errors do not accumulate forever.
+  if (strategy === 'anchored_plus_nearest_safe' && Number.isFinite(referenceIndex)) {
+    let query = supabase
+      .from('colorization_job_frames')
+      .select('*')
+      .eq('job_id', job.id)
+      .in('pipeline_status', [
+        FRAME_PIPELINE_STATUS.COLORIZED,
+        FRAME_PIPELINE_STATUS.CORRECTION_APPLIED,
+        FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME,
+      ]);
+
+    if (targetIndex >= referenceIndex) {
+      query = query.lt('frame_index', targetIndex).order('frame_index', { ascending: false });
+    } else {
+      query = query.gt('frame_index', targetIndex).order('frame_index', { ascending: true });
+    }
+
+    const { data: candidates, error } = await query.limit(8);
+    if (error) throw error;
+
+    for (const row of candidates || []) {
+      const summary = row.confidence_summary || {};
+      const score = Number(summary.confidence_score ?? 1);
+      const isManual = row.pipeline_status === FRAME_PIPELINE_STATUS.CORRECTION_APPLIED
+        || row.pipeline_status === FRAME_PIPELINE_STATUS.CORRECTION_KEYFRAME;
+
+      if (!isManual && score < trustThreshold) continue;
+
+      const candidateFrame = await getFrameById(supabase, row.frame_id);
+      if (candidateFrame?.source_image_url && candidateFrame?.colored_image_url) {
+        return candidateFrame;
+      }
+    }
+  }
+
+  // Backward compatibility with old jobs.
+  if (strategy === 'nearest_colored_neighbor' && Number.isFinite(referenceIndex)) {
     let query = supabase
       .from('frames')
       .select('*')
@@ -178,6 +216,14 @@ async function processOneFrame({ supabase, projectId, job }) {
     base64: cv.assets.segment_ids_png_base64,
     contentType: 'image/png',
   });
+  const encodedSegmentMapUrl = cv.assets.encoded_segment_map_png_base64
+    ? await uploadBase64Asset(supabase, {
+        bucket,
+        path: paths.encodedSegmentMap,
+        base64: cv.assets.encoded_segment_map_png_base64,
+        contentType: 'image/png',
+      })
+    : null;
   const segmentsJsonUrl = await uploadBase64Asset(supabase, {
     bucket,
     path: paths.segmentsJson,
@@ -210,6 +256,7 @@ async function processOneFrame({ supabase, projectId, job }) {
       colorized_url: colorizedUrl,
       low_confidence_overlay_url: overlayUrl,
       segment_ids_url: segmentIdsUrl,
+      labels_asset_url: encodedSegmentMapUrl,
       segments_json_url: segmentsJsonUrl,
     })
     .eq('id', nextFrame.id)
@@ -235,6 +282,10 @@ async function processOneFrame({ supabase, projectId, job }) {
   const currentCursor = nextFrame._order_cursor != null
     ? Number(nextFrame._order_cursor)
     : Number(nextFrame.frame_index ?? frameRecord.frame_index ?? 0);
+  const trustThreshold = Number(job.settings?.trusted_reference_min_confidence ?? 0.6);
+  const resultConfidenceScore = Number(cv.confidence_score ?? 0);
+  const canTrustResult = !needsReview && resultConfidenceScore >= trustThreshold;
+
   const jobUpdate = needsReview
     ? {
         status: JOB_STATUS.WAITING_REVIEW,
@@ -244,7 +295,7 @@ async function processOneFrame({ supabase, projectId, job }) {
     : {
         status: JOB_STATUS.RUNNING,
         current_review_frame_id: null,
-        last_trusted_frame_id: frameRecord.id,
+        last_trusted_frame_id: canTrustResult ? frameRecord.id : job.last_trusted_frame_id,
         next_frame_index: nextCursor,
       };
 
@@ -266,6 +317,7 @@ async function processOneFrame({ supabase, projectId, job }) {
     result_url: colorizedUrl,
     overlay_url: overlayUrl,
     segment_ids_url: segmentIdsUrl,
+    labels_asset_url: encodedSegmentMapUrl,
     segments_json_url: segmentsJsonUrl,
     message: needsReview
       ? 'Frame needs review. Open RightPanel Review/Correction.'
