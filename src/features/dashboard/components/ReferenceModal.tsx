@@ -12,7 +12,7 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
     showReferenceModal, setShowReferenceModal,
     refModalTab, setRefModalTab,
     selectedRefId, setSelectedRefId,
-    uncoloredFiles,
+    uncoloredFiles, activeFrame,
     customColoredInputRef,
     handleConfirmReference,
   } = ctx;
@@ -21,6 +21,7 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
 
   const selectedFrame = uncoloredFiles.find((f) => f.id === selectedRefId);
   const selectedIsValidReference = Boolean(selectedFrame?.paintUrl);
+  const uploadTargetFrame = uncoloredFiles[activeFrame];
 
   return (
     <div
@@ -33,7 +34,7 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
         <div style={{ padding: "20px 22px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1E293B", margin: 0 }}>Set Reference Image</h2>
-            <p style={{ fontSize: 12, color: "#64748B", marginTop: 3 }}>Choose a frame or upload a colored reference for AI guidance.</p>
+            <p style={{ fontSize: 12, color: "#64748B", marginTop: 3 }}>Choose a colored keyframe or upload a reference linked to the current sketch.</p>
           </div>
           <button
             onClick={() => setShowReferenceModal(false)}
@@ -122,19 +123,34 @@ export function ReferenceModal({ ctx }: ReferenceModalProps) {
               </>
             )
           ) : (
-            <div
-              onClick={() => customColoredInputRef.current?.click()}
-              style={{ border: "2px dashed #CBD5E1", borderRadius: 12, padding: "36px 22px", textAlign: "center", cursor: "pointer", background: "#FAFAFA" }}
-            >
-              <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-                <Upload size={20} color="#3B82F6" />
+            <>
+              {uploadTargetFrame ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, marginBottom: 12, borderRadius: 10, background: "#EFF6FF", border: "1px solid #BFDBFE" }}>
+                  <img src={uploadTargetFrame.url} alt={uploadTargetFrame.name} style={{ width: 52, height: 52, borderRadius: 7, objectFit: "cover", border: "1px solid #DBEAFE" }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "#2563EB", textTransform: "uppercase", letterSpacing: 0.6 }}>Link reference to Frame {activeFrame + 1}</div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#1E293B", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{uploadTargetFrame.name}</div>
+                    <div style={{ fontSize: 10, color: "#64748B", marginTop: 2, lineHeight: 1.45 }}>The sketch remains unchanged. The colored image appears as a separate Reference Image card in the uploaded-image list.</div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: 10, marginBottom: 12, borderRadius: 10, background: "#FEF2F2", color: "#B91C1C", fontSize: 11 }}>Import and select an uncolored frame first.</div>
+              )}
+
+              <div
+                onClick={() => uploadTargetFrame && customColoredInputRef.current?.click()}
+                style={{ border: "2px dashed #CBD5E1", borderRadius: 12, padding: "36px 22px", textAlign: "center", cursor: uploadTargetFrame ? "pointer" : "not-allowed", opacity: uploadTargetFrame ? 1 : 0.55, background: "#FAFAFA" }}
+              >
+                <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#EFF6FF", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+                  <Upload size={20} color="#3B82F6" />
+                </div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: "#1E293B", marginBottom: 3 }}>Click to upload a colored reference</p>
+                <p style={{ fontSize: 11, color: "#94A3B8", marginBottom: 14 }}>PNG, JPG, WEBP or GIF · up to 25 MB</p>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 16px", borderRadius: 8, background: "#3B82F6", color: "white", fontSize: 12, fontWeight: 600 }}>
+                  <Upload size={11} />Browse Files
+                </div>
               </div>
-              <p style={{ fontSize: 13, fontWeight: 600, color: "#1E293B", marginBottom: 3 }}>Click to upload a colored image</p>
-              <p style={{ fontSize: 11, color: "#94A3B8", marginBottom: 14 }}>PNG, JPG or PSD — used as the AI color reference</p>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 16px", borderRadius: 8, background: "#3B82F6", color: "white", fontSize: 12, fontWeight: 600 }}>
-                <Upload size={11} />Browse Files
-              </div>
-            </div>
+            </>
           )}
         </div>
 

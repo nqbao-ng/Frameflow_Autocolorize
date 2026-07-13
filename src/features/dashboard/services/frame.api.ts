@@ -17,10 +17,32 @@ export async function createFrame(data: {
     .single();
 
   if (error) {
-    throw error;
+    throw new Error(`Database insert frame failed: ${error.message}`);
   }
 
   return row;
+}
+
+/**
+ * Uses MAX(frame_index) instead of the current UI length.
+ * This avoids duplicate indexes after a frame was deleted and files are
+ * imported again.
+ */
+export async function getNextFrameIndex(projectId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("frames")
+    .select("frame_index")
+    .eq("project_id", projectId)
+    .order("frame_index", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Cannot determine the next frame index: ${error.message}`);
+  }
+
+  const highestIndex = Number(data?.frame_index);
+  return Number.isFinite(highestIndex) ? highestIndex + 1 : 0;
 }
 
 export async function loadFrames(projectId: string) {
@@ -31,7 +53,7 @@ export async function loadFrames(projectId: string) {
     .order("frame_index", { ascending: true });
 
   if (error) {
-    throw error;
+    throw new Error(`Load frames failed: ${error.message}`);
   }
 
   return data ?? [];
@@ -50,7 +72,7 @@ export async function updateFrameColor(
     .eq("id", frameId);
 
   if (error) {
-    throw error;
+    throw new Error(`Update colored frame failed: ${error.message}`);
   }
 }
 
@@ -61,6 +83,6 @@ export async function deleteFrame(frameId: string) {
     .eq("id", frameId);
 
   if (error) {
-    throw error;
+    throw new Error(`Delete frame failed: ${error.message}`);
   }
 }

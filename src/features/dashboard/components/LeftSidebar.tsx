@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 import {
   Zap, ChevronRight, LayoutGrid, FileImage, Star,
-  List, ImageIcon, Crown, FolderOpen, X,
+  List, ImageIcon, Crown, FolderOpen, X, Eye,
 } from "lucide-react";
 import type { useDashboard } from "../hooks/useDashboard";
 
@@ -15,8 +15,10 @@ interface LeftSidebarProps {
 export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
   const {
     uncoloredFiles, activeFrame, frameStates, frameRefMap, framePaints,
-    referenceImage, setReferenceImage,
-    uncoloredInputRef, customColoredInputRef,
+    referenceImage, detachedReferenceFrameId,
+    showReferencePreview, openReferencePreview, clearReferenceSelection,
+    isImporting,
+    uncoloredInputRef,
     handleFrameChange, setContextMenu,
     openReferenceModal,
   } = ctx;
@@ -74,6 +76,37 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, paddingBottom: 8, paddingTop: 4 }}>
+            {referenceImage?.paintUrl && (
+              <button
+                onClick={openReferencePreview}
+                style={{
+                  gridColumn: "1 / -1",
+                  border: showReferencePreview ? "2px solid #3B82F6" : "1.5px solid #93C5FD",
+                  borderRadius: 9,
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  padding: 0,
+                  background: "#EFF6FF",
+                  boxShadow: showReferencePreview ? "0 0 0 2px rgba(59,130,246,0.16)" : "0 1px 4px rgba(0,0,0,0.06)",
+                  position: "relative",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "stretch" }}>
+                  <img src={referenceImage.paintUrl} alt="Reference" style={{ width: 72, height: 56, objectFit: "cover", display: "block", flexShrink: 0 }} />
+                  <div style={{ padding: "7px 8px", minWidth: 0, flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, color: "#2563EB", marginBottom: 3 }}>
+                      <Star size={9} fill="#2563EB" />
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.6 }}>REFERENCE IMAGE</span>
+                    </div>
+                    <div style={{ fontSize: 9, fontWeight: 600, color: "#1E293B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{referenceImage.name}</div>
+                    <div style={{ fontSize: 8, color: "#64748B", marginTop: 2, display: "flex", alignItems: "center", gap: 3 }}>
+                      <Eye size={8} /> Click to preview · linked to Frame {Math.max(1, uncoloredFiles.findIndex((frame) => frame.id === referenceImage.id) + 1)}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            )}
             {uncoloredFiles.map((file, i) => {
               const isActive = activeFrame === i;
               const state = frameStates[i] ?? "plain";
@@ -91,7 +124,11 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
                     transition: "all 0.1s",
                   }}
                 >
-                  <img src={framePaints[i] || file.paintUrl || file.url} alt={file.name} style={{ width: "100%", height: 48, objectFit: "cover", display: "block" }} />
+                  <img
+                    src={(frameStates[i] === "manual" ? framePaints[i] : null) || (file.id === detachedReferenceFrameId ? file.url : file.paintUrl || file.url)}
+                    alt={file.name}
+                    style={{ width: "100%", height: 48, objectFit: "cover", display: "block" }}
+                  />
                   <div style={{ position: "absolute", top: 3, left: 3, background: "rgba(0,0,0,0.55)", borderRadius: 3, padding: "1px 4px" }}>
                     <span style={{ fontSize: 8, fontWeight: 700, color: "white" }}>{i + 1}</span>
                   </div>
@@ -117,15 +154,16 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
       {/* Bottom import buttons */}
       <div style={{ padding: "8px 10px", flexShrink: 0, borderTop: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: 5 }}>
         <button
-          onClick={() => uncoloredInputRef.current?.click()}
-          style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 9, border: "1.5px solid #E2E8F0", background: "white", cursor: "pointer", fontFamily: "'Inter',sans-serif", width: "100%", textAlign: "left" }}
+          onClick={() => !isImporting && uncoloredInputRef.current?.click()}
+          disabled={isImporting}
+          style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 9px", borderRadius: 9, border: "1.5px solid #E2E8F0", background: "white", cursor: isImporting ? "wait" : "pointer", opacity: isImporting ? 0.65 : 1, fontFamily: "'Inter',sans-serif", width: "100%", textAlign: "left" }}
         >
           <div style={{ width: 22, height: 22, borderRadius: 5, background: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <List size={11} color="#64748B" />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "#1E293B" }}>Import Uncolored Files</div>
-            <div style={{ fontSize: 8, color: "#94A3B8" }}>{uncoloredFiles.length} loaded</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: "#1E293B" }}>{isImporting ? "Importing..." : "Import Uncolored Files"}</div>
+            <div style={{ fontSize: 8, color: "#94A3B8" }}>{isImporting ? "Please wait" : `${uncoloredFiles.length} loaded`}</div>
           </div>
         </button>
 
@@ -155,7 +193,7 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
           </div>
           {referenceImage && (
             <button
-              onClick={(e) => { e.stopPropagation(); setReferenceImage(null); }}
+              onClick={(e) => { e.stopPropagation(); clearReferenceSelection(); }}
               style={{ background: "none", border: "none", cursor: "pointer", color: "#94A3B8", padding: 1, display: "flex", alignItems: "center", flexShrink: 0 }}
             >
               <X size={10} />

@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import JSZip from "jszip";
 import type { Tool, BlendMode, FrameState, ImportedFile, ContextMenu } from "../types";
 import type { PaintCanvasHandle } from "../components/PaintCanvas";
-import { uploadFrameImage } from "../services/storage.api";
-import { createFrame, deleteFrame as deleteFrameApi } from "../services/frame.api";
+import { removeFrameImage, uploadFrameImage } from "../services/storage.api";
+import { createFrame, deleteFrame as deleteFrameApi, getNextFrameIndex } from "../services/frame.api";
 import { useParams } from "react-router";
 import { loadFrames } from "../services/frame.api";
 import {
@@ -39,20 +39,58 @@ export function useDashboard() {
   const [frameStates, setFrameStates] = useState<FrameState[]>([]);
   const [uncoloredFiles, setUncoloredFiles] = useState<ImportedFile[]>([]);
   const [referenceImage, setReferenceImage] = useState<ImportedFile | null>(null);
+  const [detachedReferenceFrameId, setDetachedReferenceFrameId] = useState<string | null>(null);
+  const [showReferencePreview, setShowReferencePreview] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  const referenceStorageKey = projectId ? `frameflow:reference-frame:${projectId}` : null;
+  const detachedReferenceStorageKey = projectId ? `frameflow:detached-reference:${projectId}` : null;
+
+  const persistReferenceFrameId = useCallback((frameId: string | null) => {
+    if (!referenceStorageKey || typeof window === "undefined") return;
+    if (frameId) window.localStorage.setItem(referenceStorageKey, frameId);
+    else window.localStorage.removeItem(referenceStorageKey);
+  }, [referenceStorageKey]);
+
+  const persistDetachedReferenceFrameId = useCallback((frameId: string | null) => {
+    setDetachedReferenceFrameId(frameId);
+    if (!detachedReferenceStorageKey || typeof window === "undefined") return;
+    if (frameId) window.localStorage.setItem(detachedReferenceStorageKey, frameId);
+    else window.localStorage.removeItem(detachedReferenceStorageKey);
+  }, [detachedReferenceStorageKey]);
 
   const refreshFrames = useCallback(async (): Promise<ImportedFile[]> => {
     if (!projectId) return [];
     const frames = await loadFrames(projectId);
     const mapped = frames.map(normalizeImportedFrame);
+    const storedDetachedId = typeof window !== "undefined" && detachedReferenceStorageKey
+      ? window.localStorage.getItem(detachedReferenceStorageKey)
+      : null;
+
     setUncoloredFiles(mapped);
-    setFrameStates(mapped.map((frame) => (frame.paintUrl ? "ai" : "plain") as FrameState));
+    setFrameStates(mapped.map((frame) => (
+      frame.paintUrl && frame.id !== storedDetachedId ? "ai" : "plain"
+    ) as FrameState));
     setReferenceImage((prev) => {
-      if (!prev) return null;
-      const fresh = mapped.find((frame) => frame.id === prev.id);
+      const storedId = typeof window !== "undefined" && referenceStorageKey
+        ? window.localStorage.getItem(referenceStorageKey)
+        : null;
+      const desiredId = prev?.id || storedId;
+      if (!desiredId) return null;
+      const fresh = mapped.find((frame) => frame.id === desiredId);
       return fresh?.paintUrl ? fresh : null;
     });
+
+    if (typeof window !== "undefined" && detachedReferenceStorageKey) {
+      setDetachedReferenceFrameId(
+        storedDetachedId && mapped.some((frame) => frame.id === storedDetachedId)
+          ? storedDetachedId
+          : null,
+      );
+    }
+
     return mapped;
-  }, [projectId]);
+  }, [projectId, referenceStorageKey, detachedReferenceStorageKey]);
 
   useEffect(() => {
   if (!projectId) {
@@ -195,8 +233,24 @@ export function useDashboard() {
 
   const handleFrameChange = (idx: number) => {
     saveCurrentFrame();
+    setShowReferencePreview(false);
     setActiveFrame(idx);
     setIsPlaying(false);
+  };
+
+  const openReferencePreview = () => {
+    if (!referenceImage?.paintUrl) {
+      addToast("❌ Reference hiện tại chưa có ảnh màu", "error");
+      return;
+    }
+    setIsPlaying(false);
+    setShowReferencePreview(true);
+  };
+
+  const clearReferenceSelection = () => {
+    setReferenceImage(null);
+    setShowReferencePreview(false);
+    persistReferenceFrameId(null);
   };
 
   // ── Undo / Redo ────────────────────────────────────────────────────────────
@@ -494,6 +548,11 @@ export function useDashboard() {
       };
 
       setReferenceImage(correctionReference);
+      persistReferenceFrameId(correctionReference.id);
+      if (detachedReferenceFrameId === correctionReference.id) {
+        persistDetachedReferenceFrameId(null);
+      }
+      setShowReferencePreview(false);
       setFrameRefMap((prev) => ({ ...prev, [activeFrame]: correctionReference }));
       setUncoloredFiles((prev) =>
         prev.map((item, index) =>
@@ -627,6 +686,9 @@ export function useDashboard() {
     projectId,
     refreshFrames,
     uncoloredFiles,
+    detachedReferenceFrameId,
+    persistDetachedReferenceFrameId,
+    persistReferenceFrameId,
   ]);
 
   const handleAutoColor = async () => {
@@ -658,7 +720,7 @@ export function useDashboard() {
 
     // Nếu user đang mở đúng reference và vừa sửa tay trên canvas,
     // save lại thành correction keyframe trước khi tạo job mới.
-    if (activeFrame === referenceIndex) {
+    if (activeFrame === referenceIndex && frameStates[referenceIndex] === "manual") {
       addToast("⏳ Đang lưu correction reference hiện tại...", "info", 5000);
       const savedUrl = await handleSaveCurrentFrame();
 
@@ -669,6 +731,7 @@ export function useDashboard() {
         };
 
         setReferenceImage(effectiveReference);
+        persistReferenceFrameId(effectiveReference.id);
 
         setUncoloredFiles((prev) =>
           prev.map((item, index) =>
@@ -811,55 +874,91 @@ export function useDashboard() {
 const handleImportUncolored = async (
   e: React.ChangeEvent<HTMLInputElement>,
 ) => {
-  const files = Array.from(e.target.files || []);
+  const input = e.currentTarget;
+  const files = Array.from(input.files || []);
 
-  if (!files.length || !projectId) {
+  // Reset immediately so the browser will fire onChange even when the user
+  // selects exactly the same files again after a failed import.
+  input.value = "";
+
+  if (!files.length) return;
+
+  if (!projectId) {
+    addToast("❌ Không tìm thấy project hiện tại", "error");
     return;
   }
 
+  if (isImporting) {
+    addToast("⏳ Một lần import khác đang chạy. Hãy chờ hoàn tất.", "info", 5000);
+    return;
+  }
+
+  setIsImporting(true);
+  addToast(`⏳ Đang import ${files.length} ảnh...`, "info", 5000);
+
+  const succeeded: ImportedFile[] = [];
+  const failed: string[] = [];
+
   try {
-    const uploadedFrames: ImportedFile[] = [];
+    // Do not use uncoloredFiles.length here. After deleting a middle frame,
+    // length can point to an index that already exists in the database.
+    let nextFrameIndex = await getNextFrameIndex(projectId);
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (const file of files) {
+      let uploadedPath: string | null = null;
 
-      // Upload image to Supabase Storage
-      const imageUrl = await uploadFrameImage(
-        file,
-        projectId,
-      );
+      try {
+        const uploaded = await uploadFrameImage(file, projectId);
+        uploadedPath = uploaded.path;
 
-      // Insert frame row into DB
-      const frame = await createFrame({
+        const frame = await createFrame({
           projectId,
-          frameIndex:
-            uncoloredFiles.length + i,
-          sourceImageUrl: imageUrl,
+          frameIndex: nextFrameIndex,
+          sourceImageUrl: uploaded.publicUrl,
         });
 
-      // Local UI update
-      uploadedFrames.push({
-        id: frame.id,
-        name: file.name,
-        url: imageUrl,
-      });
+        const imported: ImportedFile = {
+          id: frame.id,
+          name: file.name,
+          url: uploaded.publicUrl,
+          paintUrl: null,
+        };
+
+        succeeded.push(imported);
+        nextFrameIndex += 1;
+
+        // Update after every successful file. A later failure therefore never
+        // leaves successfully inserted frames invisible until refresh.
+        setUncoloredFiles((prev) => [...prev, imported]);
+        setFrameStates((prev) => [...prev, "plain" as FrameState]);
+      } catch (error) {
+        if (uploadedPath) await removeFrameImage(uploadedPath);
+        const message = error instanceof Error ? error.message : "Unknown import error";
+        console.error(`IMPORT FAILED: ${file.name}`, error);
+        failed.push(`${file.name}: ${message}`);
+      }
     }
 
-    setUncoloredFiles((prev) => [
-      ...prev,
-      ...uploadedFrames,
-    ]);
-
-    setFrameStates((prev) => [
-      ...prev,
-      ...files.map(
-        () => "plain" as FrameState,
-      ),
-    ]);
-
-    e.target.value = "";
+    if (succeeded.length > 0 && failed.length === 0) {
+      addToast(`✅ Imported ${succeeded.length} uncolored frame(s)`, "success", 6000);
+    } else if (succeeded.length > 0) {
+      addToast(
+        `⚠️ Imported ${succeeded.length}/${files.length}. Failed: ${failed.map((item) => item.split(":")[0]).join(", ")}`,
+        "info",
+        10000,
+      );
+    } else {
+      throw new Error(failed[0] || "Không upload được file nào.");
+    }
   } catch (error) {
-    console.error(error);
+    console.error("IMPORT UNCOLORED ERROR:", error);
+    addToast(
+      `❌ Import failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+      "error",
+      10000,
+    );
+  } finally {
+    setIsImporting(false);
   }
 };
 const handleCustomColoredUpload = async (
@@ -904,16 +1003,16 @@ const handleCustomColoredUpload = async (
         index === activeFrame ? { ...item, paintUrl: coloredUrl } : item,
       ),
     );
-    setFrameStates((prev) => {
-      const next = [...prev];
-      next[activeFrame] = "manual";
-      return next;
-    });
-
+    // The uploaded reference remains linked to this sketch in the database so
+    // the CV backend can use the pair, but the UI displays it as a separate
+    // reference card instead of replacing the sketch thumbnail/canvas.
     setReferenceImage(savedReference);
+    persistReferenceFrameId(savedReference.id);
+    persistDetachedReferenceFrameId(savedReference.id);
+    setShowReferencePreview(false);
     setFrameRefMap((prev) => ({ ...prev, [activeFrame]: savedReference }));
     setShowReferenceModal(false);
-    addToast("✅ Colored keyframe đã được lưu và chọn làm reference", "success");
+    addToast("✅ Reference đã được lưu riêng và liên kết với sketch hiện tại", "success", 6000);
   } catch (error) {
     console.error("CUSTOM COLORED UPLOAD ERROR:", error);
     addToast(`❌ Lỗi lưu colored keyframe: ${(error as Error).message}`, "error", 7000);
@@ -934,6 +1033,8 @@ const handleCustomColoredUpload = async (
       return;
     }
     setReferenceImage(found);
+    persistReferenceFrameId(found.id);
+    setShowReferencePreview(false);
     setShowReferenceModal(false);
   };
 
@@ -959,8 +1060,9 @@ const handleCustomColoredUpload = async (
 
     let savedPaintUrl = frame.paintUrl;
 
-    // Nếu đang mở frame này, lưu canvas hiện tại thành correction keyframe.
-    if (fi === activeFrame) {
+    // Chỉ ghi đè colored image khi người dùng thực sự đã sửa canvas.
+    // Reference upload tách rời đang hiển thị sketch nên không được flatten lại.
+    if (fi === activeFrame && frameStates[fi] === "manual") {
       addToast("⏳ Đang lưu correction keyframe...", "info", 5000);
 
       const nextUrl = await handleSaveCurrentFrame();
@@ -986,6 +1088,8 @@ const handleCustomColoredUpload = async (
     };
 
     setReferenceImage(nextReference);
+    persistReferenceFrameId(nextReference.id);
+    setShowReferencePreview(false);
 
     setUncoloredFiles((prev) =>
       prev.map((item, index) =>
@@ -1057,6 +1161,13 @@ const handleCustomColoredUpload = async (
       // Delete from database
       if (frameId) {
         await deleteFrameApi(frameId);
+
+        if (referenceImage?.id === frameId) {
+          clearReferenceSelection();
+        }
+        if (detachedReferenceFrameId === frameId) {
+          persistDetachedReferenceFrameId(null);
+        }
       }
 
       // Update local state
@@ -1296,6 +1407,9 @@ const handleCustomColoredUpload = async (
     frameStates, setFrameStates,
     uncoloredFiles,
     referenceImage, setReferenceImage,
+    detachedReferenceFrameId,
+    showReferencePreview, setShowReferencePreview,
+    isImporting,
     frameRefMap,
     contextMenu, setContextMenu,
     undoStack, redoStack,
@@ -1358,6 +1472,8 @@ const handleCustomColoredUpload = async (
 
     // Handlers
     handleFrameChange,
+    openReferencePreview,
+    clearReferenceSelection,
     pushUndoSnapshot,
     handleStroke,
     handleUndo,

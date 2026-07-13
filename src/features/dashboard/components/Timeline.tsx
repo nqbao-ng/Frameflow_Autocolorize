@@ -16,6 +16,7 @@ export function Timeline({ ctx }: TimelineProps) {
     speed, setSpeed,
     showSpeedMenu, setShowSpeedMenu,
     activeFrame, frameStates, frameRefMap, framePaints, referenceImage,
+    detachedReferenceFrameId,
     uncoloredFiles, timelineScrollRef,
     handleFrameChange, setContextMenu,
     paintableFrames, toggleFramePaintable,
@@ -110,7 +111,11 @@ export function Timeline({ ctx }: TimelineProps) {
                      transition: "all 0.1s",
                    }}
                  >
-                   <img src={framePaints[i] || file.paintUrl || file.url} alt={file.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                   <img
+                     src={(frameStates[i] === "manual" ? framePaints[i] : null) || (file.id === detachedReferenceFrameId ? file.url : file.paintUrl || file.url)}
+                     alt={file.name}
+                     style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                   />
                    {state !== "plain" && (
                      <div style={{ position: "absolute", top: 2, right: 2, width: 5, height: 5, borderRadius: "50%", background: state === "ai" ? "#8B5CF6" : "#F59E0B", border: "1.5px solid white" }} />
                    )}
