@@ -34,6 +34,10 @@ import {
 } from "@/features/admin/AdminPage";
 
 import {
+  CreativeStudioPage,
+} from "@/features/creative/CreativeStudioPage";
+
+import {
   AuthGuard,
 } from "@/features/auth/components/AuthGuard";
 
@@ -83,6 +87,15 @@ const router = createBrowserRouter([
         element: (
           <AuthGuard>
             <Dashboard />
+          </AuthGuard>
+        ),
+      },
+
+      {
+        path: "creative-studio",
+        element: (
+          <AuthGuard>
+            <CreativeStudioPage />
           </AuthGuard>
         ),
       },

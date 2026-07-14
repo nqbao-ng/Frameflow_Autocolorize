@@ -9,6 +9,7 @@ import {
   Download,
   RefreshCw,
   Save,
+  WandSparkles,
 } from "lucide-react";
 import { useState } from "react";
 import type { useDashboard } from "../hooks/useDashboard";
@@ -59,12 +60,25 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
     handleRedo,
     handleSaveCurrentFrame,
     handleCorrectionKeyframeAndRecolorNextFrames,
+    uncoloredFiles,
+    frameStates,
+    framePaints,
+    detachedReferenceFrameId,
   } = ctx;
 
   const canUndo = (undoStack[activeFrame]?.length ?? 0) > 0;
   const canRedo = (redoStack[activeFrame]?.length ?? 0) > 0;
 
   const [showExportModal, setShowExportModal] = useState(false);
+
+  const activeFrameData = uncoloredFiles[activeFrame];
+  const activeCreativeSource =
+    (frameStates[activeFrame] === "manual" ? framePaints[activeFrame] : null) ||
+    (activeFrameData?.id === detachedReferenceFrameId
+      ? activeFrameData?.url
+      : activeFrameData?.paintUrl || activeFrameData?.url) ||
+    null;
+
 
   return (
     <div
@@ -174,6 +188,30 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
           <Forward size={11} />
           Correct & Continue
         </button>
+
+        {/* Creative tools */}
+        <Link
+          to="/creative-studio"
+          state={{
+            mode: "outpaint",
+            sourceImage: activeCreativeSource,
+            sourceName: activeFrameData?.name || `Frame ${activeFrame + 1}`,
+          }}
+          title="Open the current frame in AI Creative Studio"
+          style={{
+            ...baseBtn,
+            border: "1px solid rgba(255,46,154,0.42)",
+            background: "rgba(255,46,154,0.08)",
+            color: "#F9A8D4",
+            fontWeight: 700,
+            textDecoration: "none",
+            opacity: activeCreativeSource ? 1 : 0.5,
+            pointerEvents: activeCreativeSource ? "auto" : "none",
+          }}
+        >
+          <WandSparkles size={11} />
+          Creative Studio
+        </Link>
 
         {/* Export */}
         <button

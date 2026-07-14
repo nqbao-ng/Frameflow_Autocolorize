@@ -5,6 +5,7 @@ export const ROUTES = {
   home:      "/",
   projects:  "/projects",
   dashboard: "/dashboard",
+  creativeStudio: "/creative-studio",
   signIn:    "/signin",
   signUp:    "/signup",
   settings:  "/settings",
