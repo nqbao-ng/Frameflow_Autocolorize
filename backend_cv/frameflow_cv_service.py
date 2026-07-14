@@ -35,6 +35,12 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 
 from vision_ai_service import bedrock_enabled, suggest_segment_role_color
+from stability_image_service import (
+    StabilityImageServiceError,
+    generate_control_sketch,
+    generate_outpaint,
+    service_status as stability_service_status,
+)
 
 # -----------------------------------------------------------------------------
 # App / security
@@ -67,6 +73,7 @@ def health() -> Dict[str, Any]:
         "ok": True,
         "service": "frameflow_cv_service",
         "bedrock_enabled": bedrock_enabled(),
+        "stability_image_services": stability_service_status(),
     }
 
 @app.get("/")
@@ -122,6 +129,27 @@ class ColorizeFrameRequest(BaseModel):
 
     role_memory: List[RoleMemoryItem] = Field(default_factory=list)
     settings: AnalyzeSettings = Field(default_factory=AnalyzeSettings)
+
+
+class StabilitySketchRequest(BaseModel):
+    image_base64: str
+    prompt: str = Field(min_length=1, max_length=10000)
+    negative_prompt: Optional[str] = Field(default=None, max_length=10000)
+    control_strength: float = Field(default=0.78, ge=0.0, le=1.0)
+    style_preset: Optional[str] = None
+    seed: Optional[int] = Field(default=None, ge=0, le=4294967294)
+
+
+class StabilityOutpaintRequest(BaseModel):
+    image_base64: str
+    prompt: Optional[str] = Field(default=None, max_length=10000)
+    left: int = Field(default=0, ge=0, le=2000)
+    right: int = Field(default=0, ge=0, le=2000)
+    up: int = Field(default=0, ge=0, le=2000)
+    down: int = Field(default=0, ge=0, le=2000)
+    creativity: float = Field(default=0.5, ge=0.1, le=1.0)
+    style_preset: Optional[str] = None
+    seed: Optional[int] = Field(default=None, ge=0, le=4294967294)
 
 
 class VisionSuggestRequest(BaseModel):
@@ -802,3 +830,49 @@ def vision_suggest(req: VisionSuggestRequest, x_frameflow_key: Optional[str] = H
         segment_ids_bytes=optional_download(req.segment_ids_url),
         reference_bytes=optional_download(req.reference_url),
     )
+
+
+# -----------------------------------------------------------------------------
+# Stability AI Image Services through Amazon Bedrock
+# -----------------------------------------------------------------------------
+
+
+@app.get("/v1/creative/status")
+def creative_status(x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    require_api_key(x_frameflow_key)
+    return stability_service_status()
+
+
+@app.post("/v1/creative/sketch")
+def creative_sketch(req: StabilitySketchRequest, x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    require_api_key(x_frameflow_key)
+    try:
+        return generate_control_sketch(
+            image_base64=req.image_base64,
+            prompt=req.prompt,
+            negative_prompt=req.negative_prompt,
+            control_strength=req.control_strength,
+            style_preset=req.style_preset,
+            seed=req.seed,
+        )
+    except StabilityImageServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.details) from exc
+
+
+@app.post("/v1/creative/outpaint")
+def creative_outpaint(req: StabilityOutpaintRequest, x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    require_api_key(x_frameflow_key)
+    try:
+        return generate_outpaint(
+            image_base64=req.image_base64,
+            prompt=req.prompt,
+            left=req.left,
+            right=req.right,
+            up=req.up,
+            down=req.down,
+            creativity=req.creativity,
+            style_preset=req.style_preset,
+            seed=req.seed,
+        )
+    except StabilityImageServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.details) from exc

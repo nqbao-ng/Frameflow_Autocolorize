@@ -14,12 +14,20 @@ export function sendError(res, status, message, details = null) {
   sendJson(res, status, { ok: false, error: message, details });
 }
 
-export function sendImage(res, { buffer, mimeType, seed = null, finishReason = null }) {
+export function sendImage(res, { imageBase64, mimeType, seed = null, finishReason = null, modelId = null }) {
+  const buffer = Buffer.from(String(imageBase64 || ''), 'base64');
+  if (!buffer.length) {
+    const error = new Error('FrameFlow backend returned an empty image');
+    error.statusCode = 502;
+    throw error;
+  }
+
   res.statusCode = 200;
   res.setHeader('Content-Type', mimeType || 'image/png');
   res.setHeader('Cache-Control', 'no-store');
-  if (seed) res.setHeader('x-stability-seed', String(seed));
+  if (seed !== null && seed !== undefined) res.setHeader('x-stability-seed', String(seed));
   if (finishReason) res.setHeader('x-stability-finish-reason', String(finishReason));
+  if (modelId) res.setHeader('x-bedrock-model-id', String(modelId));
   res.end(buffer);
 }
 
@@ -80,14 +88,56 @@ export async function requireUser(req) {
   return data.user;
 }
 
-export function getStabilityApiKey() {
-  const apiKey = String(process.env.STABILITY_API_KEY || '').trim();
-  if (!apiKey) {
-    const error = new Error('STABILITY_API_KEY is not configured on the server');
+export function getFrameFlowBackendConfig() {
+  const baseUrl = String(process.env.FRAMEFLOW_CV_API_URL || process.env.CV_API_URL || '').trim();
+  const apiKey = String(process.env.FRAMEFLOW_CV_API_KEY || process.env.CV_API_KEY || '').trim();
+
+  if (!baseUrl) {
+    const error = new Error('FRAMEFLOW_CV_API_URL is not configured in Vercel');
     error.statusCode = 503;
     throw error;
   }
-  return apiKey;
+
+  return {
+    baseUrl: baseUrl.replace(/\/$/, ''),
+    apiKey,
+  };
+}
+
+export async function callFrameFlowBackend(path, { method = 'POST', payload } = {}) {
+  const { baseUrl, apiKey } = getFrameFlowBackendConfig();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+  try {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      signal: controller.signal,
+      headers: {
+        ...(payload !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(apiKey ? { 'x-frameflow-key': apiKey } : {}),
+      },
+      ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || data?.ok === false) {
+      const error = new Error(`FrameFlow Bedrock backend failed (${response.status})`);
+      error.statusCode = response.status >= 400 && response.status < 500 ? response.status : 502;
+      error.details = data?.detail || data?.details || data?.error || response.statusText;
+      throw error;
+    }
+    return data;
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('Amazon Bedrock generation timed out through the FrameFlow backend');
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export function parseImageDataUrl(imageDataUrl) {
@@ -118,7 +168,10 @@ export function parseImageDataUrl(imageDataUrl) {
     throw error;
   }
 
-  return { buffer, contentType };
+  return {
+    imageBase64: buffer.toString('base64'),
+    contentType,
+  };
 }
 
 export function validatePrompt(prompt, { required = true } = {}) {
@@ -144,51 +197,6 @@ export function clampNumber(value, min, max, fallback) {
 
 export function clampInteger(value, min, max, fallback = 0) {
   return Math.round(clampNumber(value, min, max, fallback));
-}
-
-export async function callStabilityImage(endpoint, { image, contentType, fields }) {
-  const apiKey = getStabilityApiKey();
-  const form = new FormData();
-  form.append('image', new Blob([image], { type: contentType }), `frameflow-input.${contentType.split('/')[1]}`);
-
-  Object.entries(fields).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    form.append(key, String(value));
-  });
-
-  const response = await fetch(`https://api.stability.ai${endpoint}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      Accept: 'image/*',
-      'stability-client-id': 'FrameFlow',
-    },
-    body: form,
-  });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => '');
-    let details = raw;
-    try {
-      const parsed = JSON.parse(raw);
-      details = parsed?.message || parsed?.errors?.join(', ') || parsed?.name || raw;
-    } catch {
-      // Keep original response text.
-    }
-    const error = new Error(`Stability AI request failed (${response.status})`);
-    error.statusCode = response.status === 429 ? 429 : 502;
-    error.details = details || response.statusText;
-    throw error;
-  }
-
-  const mimeType = response.headers.get('content-type') || 'image/png';
-  const output = Buffer.from(await response.arrayBuffer());
-  return {
-    mimeType,
-    buffer: output,
-    finishReason: response.headers.get('finish-reason') || null,
-    seed: response.headers.get('seed') || null,
-  };
 }
 
 export function handleApiError(res, error, fallbackMessage) {

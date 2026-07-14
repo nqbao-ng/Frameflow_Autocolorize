@@ -17,7 +17,7 @@ import { ProjectsHeader } from "@/features/projects/components/ProjectsHeader";
 import {
   expandScene,
   generateSketchConcept,
-  getStabilityBalance,
+  getBedrockStabilityStatus,
 } from "./services/stability.api";
 import {
   calculateExpansion,
@@ -153,7 +153,7 @@ export function CreativeStudioPage() {
   const [result, setResult] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [credits, setCredits] = useState<number | null>(null);
+  const [bedrockRegion, setBedrockRegion] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "ready" | "missing">("checking");
 
   const [prompt, setPrompt] = useState("");
@@ -167,9 +167,9 @@ export function CreativeStudioPage() {
   const [manualExpansion, setManualExpansion] = useState({ left: 256, right: 256, up: 0, down: 0 });
 
   useEffect(() => {
-    getStabilityBalance()
+    getBedrockStabilityStatus()
       .then((data) => {
-        setCredits(data.credits);
+        setBedrockRegion(data.region);
         setApiStatus("ready");
       })
       .catch(() => setApiStatus("missing"));
@@ -287,8 +287,8 @@ export function CreativeStudioPage() {
             {apiStatus === "ready" && <CheckCircle2 size={16} />}
             {apiStatus === "missing" && <span className="creative-status-dot" />}
             <div>
-              <strong>{apiStatus === "ready" ? "Stability AI connected" : apiStatus === "checking" ? "Checking API" : "Setup required"}</strong>
-              <span>{apiStatus === "ready" ? `${credits?.toFixed(2) ?? "0"} credits available` : apiStatus === "missing" ? "Add STABILITY_API_KEY in Vercel" : "Verifying server configuration"}</span>
+              <strong>{apiStatus === "ready" ? "Bedrock backend ready" : apiStatus === "checking" ? "Checking API" : "Setup required"}</strong>
+              <span>{apiStatus === "ready" ? `Stability Image Services · ${bedrockRegion || "configured region"}` : apiStatus === "missing" ? "Check ECS Task Role and Vercel backend URL" : "Verifying FrameFlow backend"}</span>
             </div>
           </div>
         </section>
@@ -400,7 +400,7 @@ export function CreativeStudioPage() {
 
                   <label className="creative-range-label">
                     <span><strong>Creativity</strong><em>{Math.round(creativity * 100)}%</em></span>
-                    <input type="range" min="0" max="1" step="0.01" value={creativity} onChange={(event) => setCreativity(Number(event.target.value))} />
+                    <input type="range" min="0.1" max="1" step="0.01" value={creativity} onChange={(event) => setCreativity(Number(event.target.value))} />
                     <small>Lower values usually create a safer, more continuous extension.</small>
                   </label>
                 </div>
@@ -432,7 +432,7 @@ export function CreativeStudioPage() {
                   <div className="creative-loading-state">
                     <span><Loader2 size={34} className="creative-spin" /></span>
                     <strong>Creating your animation asset</strong>
-                    <p>FrameFlow is sending an optimized image through the protected server API.</p>
+                    <p>FrameFlow is sending the optimized image to Stability AI through Amazon Bedrock.</p>
                   </div>
                 ) : result ? (
                   <img src={result} alt="Generated creative result" />

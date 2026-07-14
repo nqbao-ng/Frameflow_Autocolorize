@@ -1,5 +1,5 @@
 import {
-  callStabilityImage,
+  callFrameFlowBackend,
   clampNumber,
   ensureMethod,
   handleApiError,
@@ -18,27 +18,31 @@ export default async function handler(req, res) {
   try {
     await requireUser(req);
     const body = await readJsonBody(req);
-    const { buffer, contentType } = parseImageDataUrl(body.imageDataUrl);
+    const { imageBase64 } = parseImageDataUrl(body.imageDataUrl);
     const prompt = validatePrompt(body.prompt);
     const negativePrompt = validatePrompt(body.negativePrompt, { required: false });
     const controlStrength = clampNumber(body.controlStrength, 0, 1, 0.78);
 
-    const result = await callStabilityImage('/v2beta/stable-image/control/sketch', {
-      image: buffer,
-      contentType,
-      fields: {
+    const result = await callFrameFlowBackend('/v1/creative/sketch', {
+      payload: {
+        image_base64: imageBase64,
         prompt,
-        negative_prompt: negativePrompt,
+        negative_prompt: negativePrompt || null,
         control_strength: controlStrength,
-        output_format: 'png',
-        ...(body.seed !== undefined && body.seed !== null && body.seed !== ''
-          ? { seed: Math.max(0, Math.round(Number(body.seed))) }
-          : {}),
+        seed: body.seed !== undefined && body.seed !== null && body.seed !== ''
+          ? Math.max(0, Math.round(Number(body.seed)))
+          : null,
       },
     });
 
-    return sendImage(res, result);
+    return sendImage(res, {
+      imageBase64: result.image_base64,
+      mimeType: result.mime_type,
+      seed: result.seed,
+      finishReason: result.finish_reason,
+      modelId: result.model_id,
+    });
   } catch (error) {
-    return handleApiError(res, error, 'Failed to generate sketch concept');
+    return handleApiError(res, error, 'Failed to generate sketch concept with Stability AI on Amazon Bedrock');
   }
 }

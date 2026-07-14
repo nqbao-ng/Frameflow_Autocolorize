@@ -6,6 +6,19 @@ export type StabilityImageResponse = {
   mimeType: string;
   seed?: string | null;
   finishReason?: string | null;
+  modelId?: string | null;
+};
+
+export type BedrockStabilityStatus = {
+  ok: boolean;
+  provider: "amazon-bedrock" | string;
+  service: string;
+  region: string;
+  models: {
+    control_sketch: string;
+    outpaint: string;
+  };
+  authentication: string;
 };
 
 async function getAccessToken() {
@@ -19,7 +32,7 @@ async function getAccessToken() {
 async function requestImage(url: string, payload: Record<string, unknown>): Promise<StabilityImageResponse> {
   const token = await getAccessToken();
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 90000);
+  const timeoutId = window.setTimeout(() => controller.abort(), 65000);
 
   try {
     const response = await fetch(url, {
@@ -43,7 +56,7 @@ async function requestImage(url: string, payload: Record<string, unknown>): Prom
     }
 
     if (!contentType.startsWith("image/")) {
-      throw new Error("The generation API returned an unexpected response.");
+      throw new Error("The Amazon Bedrock generation API returned an unexpected response.");
     }
 
     const blob = await response.blob();
@@ -53,10 +66,11 @@ async function requestImage(url: string, payload: Record<string, unknown>): Prom
       mimeType: blob.type || contentType,
       seed: response.headers.get("x-stability-seed"),
       finishReason: response.headers.get("x-stability-finish-reason"),
+      modelId: response.headers.get("x-bedrock-model-id"),
     };
   } catch (error) {
     if ((error as Error).name === "AbortError") {
-      throw new Error("The generation request timed out. Try a smaller image or retry once.");
+      throw new Error("Amazon Bedrock generation timed out. Try a smaller image or retry once.");
     }
     throw error;
   } finally {
@@ -104,8 +118,8 @@ export async function expandScene(input: {
   return requestImage("/api/stability/outpaint", input);
 }
 
-export async function getStabilityBalance() {
-  return requestJson<{ ok: boolean; credits: number }>("/api/stability/balance", {
+export async function getBedrockStabilityStatus() {
+  return requestJson<BedrockStabilityStatus>("/api/stability/status", {
     method: "GET",
   });
 }
