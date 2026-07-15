@@ -88,7 +88,7 @@ export async function createCreativeJob(input: {
 }
 
 export async function getCreativeJob(jobId: string) {
-  return requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/jobs?id=${encodeURIComponent(jobId)}`, {
+  return requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/job?id=${encodeURIComponent(jobId)}`, {
     method: "GET",
   }, 15000);
 }
@@ -100,7 +100,7 @@ export async function listCreativeJobs(limit = 12) {
 }
 
 export async function cancelCreativeJob(jobId: string) {
-  return requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/jobs?id=${encodeURIComponent(jobId)}`, {
+  return requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/job?id=${encodeURIComponent(jobId)}`, {
     method: "DELETE",
   }, 15000);
 }

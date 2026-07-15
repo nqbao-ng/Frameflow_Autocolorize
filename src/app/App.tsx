@@ -37,6 +37,8 @@ import {
   CreativeStudioPage,
 } from "@/features/creative/CreativeStudioPage";
 
+import { PaymentResultPage } from "@/features/billing/PaymentResultPage";
+
 import {
   AuthGuard,
 } from "@/features/auth/components/AuthGuard";
@@ -96,6 +98,16 @@ const router = createBrowserRouter([
         element: (
           <AuthGuard>
             <CreativeStudioPage />
+          </AuthGuard>
+        ),
+      },
+
+
+      {
+        path: "payment/result",
+        element: (
+          <AuthGuard>
+            <PaymentResultPage />
           </AuthGuard>
         ),
       },

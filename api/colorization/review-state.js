@@ -6,7 +6,7 @@ import {
   getSupabaseAdmin,
   sendError,
   sendJson,
-} from './_shared.js';
+} from '../../server/colorization-shared.js';
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['GET'])) return;

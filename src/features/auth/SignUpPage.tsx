@@ -196,7 +196,7 @@
 
 //           <div style={{ textAlign: "center", marginTop: 20 }}>
 //             <span style={{ fontSize: 14, color: "#64748B" }}>Already have an account? </span>
-//             <Link to="/signin" style={{ fontSize: 14, fontWeight: 600, color: "#3B82F6", textDecoration: "none" }}>
+//             <Link to={signInUrl} style={{ fontSize: 14, fontWeight: 600, color: "#3B82F6", textDecoration: "none" }}>
 //               Sign in
 //             </Link>
 //           </div>
@@ -214,7 +214,7 @@
 // - Email verification screen sau khi đăng ký thành công
 
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { Eye, EyeOff, Check, Loader2, Mail } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
 import { BrandLogo } from "@/shared/components/BrandLogo";
@@ -229,6 +229,9 @@ export function SignUpPage() {
   const [emailSent,      setEmailSent]      = useState(false);
 
   const { signUp } = useAuth();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
+  const signInUrl = redirectTo ? `/signin?redirect=${encodeURIComponent(redirectTo)}` : "/signin";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,7 +313,7 @@ export function SignUpPage() {
 
             <div style={{ marginTop: 32 }}>
               <Link
-                to="/signin"
+                to={signInUrl}
                 style={{
                   display: "inline-block", padding: "12px 32px", borderRadius: 10,
                   background: "#3B82F6", color: "white", fontWeight: 700,
@@ -496,7 +499,7 @@ export function SignUpPage() {
 
           <div style={{ textAlign: "center", marginTop: 20 }}>
             <span style={{ fontSize: 14, color: "#64748B" }}>Already have an account? </span>
-            <Link to="/signin" style={{ fontSize: 14, fontWeight: 600, color: "#3B82F6", textDecoration: "none" }}>
+            <Link to={signInUrl} style={{ fontSize: 14, fontWeight: 600, color: "#3B82F6", textDecoration: "none" }}>
               Sign in
             </Link>
           </div>

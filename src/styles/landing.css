@@ -1071,6 +1071,13 @@ body {
   }
 }
 
+
+@media (max-width: 980px) {
+  .landing-pricing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
   .landing-navbar-inner,
   .landing-hero,
@@ -1282,11 +1289,11 @@ body {
 }
 
 .landing-pricing-grid {
-  width: min(820px, 100%);
+  width: min(1120px, 100%);
   margin: 48px auto 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
 }
 
 .landing-pricing-card {
@@ -1402,6 +1409,13 @@ body {
   color: white;
   background: linear-gradient(135deg, #7c3aed 0%, #a855f7 28%, #ff2e9a 75%, #ff8a34 100%);
   box-shadow: 0 10px 28px rgba(168, 85, 247, 0.28);
+}
+
+
+@media (max-width: 980px) {
+  .landing-pricing-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 760px) {

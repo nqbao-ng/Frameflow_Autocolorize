@@ -5,7 +5,7 @@
 // Nếu đang restore session (loading) → hiện spinner, không redirect sớm
 
 import type { ReactNode } from "react";
-import { Navigate } from "react-router";
+import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../hooks/useAuth";
 
 interface AuthGuardProps {
@@ -14,6 +14,7 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   // Đang khởi tạo / restore session — chờ, không redirect sớm
   if (loading) {
@@ -44,7 +45,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   // Chưa login → redirect về signin
   if (!user) {
-    return <Navigate to="/signin" replace />;
+    const redirect = encodeURIComponent(`${location.pathname}${location.search}`);
+    return <Navigate to={`/signin?redirect=${redirect}`} replace />;
   }
 
   // Đã login → render children bình thường

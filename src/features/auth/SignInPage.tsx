@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
 import { BrandLogo } from "@/shared/components/BrandLogo";
@@ -14,13 +14,17 @@ export function SignInPage() {
 
   const { signIn, user } = useAuth();
   const navigate   = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect");
 
   // Redirect user after successful login when user data is available
   useEffect(() => {
     if (justLoggedIn && user) {
       console.log('[SignInPage] User loaded:', user.email, 'Role:', user.role);
       
-      if (user.role === 'admin') {
+      if (redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")) {
+        navigate(redirectTo);
+      } else if (user.role === 'admin') {
         console.log('[SignInPage] Redirecting admin to /admin');
         navigate("/admin");
       } else {
@@ -29,7 +33,7 @@ export function SignInPage() {
       }
       setJustLoggedIn(false);
     }
-  }, [justLoggedIn, user, navigate]);
+  }, [justLoggedIn, user, navigate, redirectTo]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,7 +188,7 @@ export function SignInPage() {
 
           <div style={{ textAlign: "center", marginTop: 24 }}>
             <span style={{ fontSize: 14, color: "#AAB2D5" }}>Don't have an account? </span>
-            <Link to="/signup" style={{ fontSize: 14, fontWeight: 600, color: "#FF2E9A", textDecoration: "none" }}>
+            <Link to={redirectTo ? `/signup?redirect=${encodeURIComponent(redirectTo)}` : "/signup"} style={{ fontSize: 14, fontWeight: 600, color: "#FF2E9A", textDecoration: "none" }}>
               Sign up free
             </Link>
           </div>

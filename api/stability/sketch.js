@@ -7,18 +7,38 @@ import {
   readJsonBody,
   requireUser,
   sendImage,
+  sendJson,
   validatePrompt,
-} from './_shared.js';
+} from '../../server/stability-shared.js';
 
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
-  if (!ensureMethod(req, res, ['POST'])) return;
+  if (!ensureMethod(req, res, ['GET', 'POST'])) return;
+
+  const action = String(req.query?.action || (req.method === 'GET' ? 'status' : 'generate')).toLowerCase();
 
   try {
     await requireUser(req);
+
+    if (req.method === 'GET' || action === 'status') {
+      const status = await callFrameFlowBackend('/v1/creative/status', { method: 'GET' });
+      return sendJson(res, 200, status);
+    }
+
     const body = await readJsonBody(req);
     const { imageBase64 } = parseImageDataUrl(body.imageDataUrl);
+
+    if (action === 'analyze') {
+      const result = await callFrameFlowBackend('/v1/creative/analyze-sketch', {
+        payload: {
+          image_base64: imageBase64,
+          style_hint: body.styleHint || null,
+        },
+      });
+      return sendJson(res, 200, result);
+    }
+
     const prompt = validatePrompt(body.prompt);
     const negativePrompt = validatePrompt(body.negativePrompt, { required: false });
     const controlStrength = clampNumber(body.controlStrength, 0, 1, 0.78);
@@ -44,6 +64,11 @@ export default async function handler(req, res) {
       modelId: result.model_id,
     });
   } catch (error) {
-    return handleApiError(res, error, 'Failed to generate sketch concept with Stability AI on Amazon Bedrock');
+    const fallback = action === 'analyze'
+      ? 'Failed to analyze sketch with Amazon Nova'
+      : action === 'status'
+        ? 'Unable to verify Amazon Bedrock Stability Image Services'
+        : 'Failed to generate sketch concept with Stability AI on Amazon Bedrock';
+    return handleApiError(res, error, fallback);
   }
 }

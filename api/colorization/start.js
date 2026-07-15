@@ -7,7 +7,7 @@ import {
   readJsonBody,
   sendError,
   sendJson,
-} from './_shared.js';
+} from '../../server/colorization-shared.js';
 
 function frameIndex(frame) {
   return Number(frame?.frame_index ?? 0);

@@ -25,6 +25,7 @@ interface AuthContextValue {
   signUp:  (credentials: SignUpCredentials) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   updateProfile: (metadata: Record<string, any>) => Promise<AuthResult>;
+  refreshUser: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -93,6 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return authApi.updateProfile(metadata);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const refreshedUser = await authApi.getSession();
+    if (mounted.current) setUser(refreshedUser);
+  }, []);
+
   // ─── Value ────────────────────────────────────────────────────────────────
 
   const value: AuthContextValue = {
@@ -102,6 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     updateProfile,
+    refreshUser,
   };
 
   return (

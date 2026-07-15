@@ -9,7 +9,7 @@ import {
   requireUser,
   sendImage,
   validatePrompt,
-} from './_shared.js';
+} from '../../server/stability-shared.js';
 
 export const config = { maxDuration: 60 };
 

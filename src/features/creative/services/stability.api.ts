@@ -131,7 +131,7 @@ async function requestJson<T>(url: string, init?: RequestInit, timeoutMs = 30000
 }
 
 export async function analyzeSketch(input: { imageDataUrl: string; styleHint?: string | null }) {
-  return requestJson<SketchAnalysisResponse>("/api/stability/analyze-sketch", {
+  return requestJson<SketchAnalysisResponse>("/api/stability/sketch?action=analyze", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -165,7 +165,7 @@ export async function expandScene(input: {
 }
 
 export async function getBedrockStabilityStatus() {
-  return requestJson<BedrockStabilityStatus>("/api/stability/status", {
+  return requestJson<BedrockStabilityStatus>("/api/stability/sketch?action=status", {
     method: "GET",
   }, 15000);
 }

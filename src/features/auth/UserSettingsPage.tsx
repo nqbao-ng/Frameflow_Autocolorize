@@ -8,6 +8,7 @@ import {
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useProfile } from "@/features/auth/hooks/useProfile";
 import { BrandLogo } from "@/shared/components/BrandLogo";
+import { BillingPanel } from "@/features/billing/BillingPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -470,83 +471,8 @@ function SecurityTab({ user }: { user: any }) {
 
 // ─── Tab: Billing ─────────────────────────────────────────────────────────────
 
-function BillingTab({ user }: { user: any }) {
-   const { profile, loading } = useProfile(user?.id ?? null);
-   const credits = profile?.credits ?? 0;
-   const subscription_plan = profile?.subscription_plan ?? "free";
-
-   const plans = [
-     { name: "free", label: "Free", price: "$0", period: "forever", features: ["5 projects", "50 exports/mo", "Basic templates"] },
-     { name: "pro",  label: "Pro",  price: "$12", period: "/ month", features: ["Unlimited projects", "500 exports/mo", "All templates", "Priority support"] },
-     { name: "enterprise", label: "Enterprise", price: "$29", period: "/ month", features: ["Everything in Pro", "5 team members", "Shared workspace", "Admin dashboard"] },
-   ];
-
-  return (
-    <>
-      {/* Credits card */}
-      <div style={{ ...S.card, background: "linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%)", border: "1px solid #DBEAFE" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ fontSize: 13, color: "#64748B", marginBottom: 4 }}>Available credits</div>
-            <div style={{ fontSize: 40, fontWeight: 800, color: "#1E293B", lineHeight: 1 }}>{credits}</div>
-            <div style={{ fontSize: 13, color: "#64748B", marginTop: 6 }}>Credits reset every month on your billing date.</div>
-          </div>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Zap size={28} color="white" fill="white" />
-          </div>
-        </div>
-        <button style={{ marginTop: 20, padding: "10px 20px", borderRadius: 10, background: "#3B82F6", color: "white", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>
-          Buy more credits
-        </button>
-      </div>
-
-      {/* Plans */}
-      <div style={{ ...S.card }}>
-        <div style={S.sectionTitle}>Plans</div>
-        <div style={S.sectionDesc}>Choose the plan that works best for you.</div>
-         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-           {plans.map(p => {
-             const isCurrent = p.name === subscription_plan;
-             return (
-             <div key={p.name} style={{
-               border: isCurrent ? "2px solid #3B82F6" : "1.5px solid #E2E8F0",
-               borderRadius: 14, padding: "20px 18px",
-               background: isCurrent ? "#F0F7FF" : "white",
-               position: "relative",
-             }}>
-               {isCurrent && (
-                 <span style={{ position: "absolute", top: -1, right: 14, fontSize: 11, background: "#3B82F6", color: "white", padding: "3px 10px", borderRadius: "0 0 8px 8px", fontWeight: 600 }}>Current</span>
-               )}
-               <div style={{ fontSize: 16, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>{p.label}</div>
-              <div style={{ marginBottom: 16 }}>
-                <span style={{ fontSize: 26, fontWeight: 800, color: "#1E293B" }}>{p.price}</span>
-                <span style={{ fontSize: 13, color: "#64748B" }}> {p.period}</span>
-              </div>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, marginBottom: 16 }}>
-                {p.features.map(f => (
-                  <li key={f} style={{ fontSize: 13, color: "#475569", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                    <Check size={13} color="#10B981" strokeWidth={3} /> {f}
-                  </li>
-                ))}
-              </ul>
-               {!isCurrent && (
-                 <button style={{ width: "100%", padding: "9px 0", borderRadius: 9, border: "1.5px solid #3B82F6", background: "white", color: "#3B82F6", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                   Upgrade
-                 </button>
-               )}
-             </div>
-           );
-           })}
-        </div>
-      </div>
-
-      {/* Billing history */}
-      <div style={S.card}>
-        <div style={S.sectionTitle}>Billing history</div>
-        <div style={S.sectionDesc}>No invoices yet.</div>
-      </div>
-    </>
-  );
+function BillingTab({ user: _user }: { user: any }) {
+  return <BillingPanel />;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -555,6 +481,7 @@ export function UserSettingsPage() {
   const { user, signOut, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { profile: settingsProfile } = useProfile(user?.id ?? null);
 
   const activeTab = (searchParams.get("tab") as Tab) ?? "account";
 
@@ -624,7 +551,7 @@ export function UserSettingsPage() {
             <div style={{ fontSize: 14, fontWeight: 700, color: "#1E293B" }}>{(user as any)?.fullName ?? "User"}</div>
             <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 2, wordBreak: "break-all" }}>{user.email}</div>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 8, background: "#EFF6FF", color: "#3B82F6", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 999 }}>
-              ✦ Free plan
+              ✦ {(settingsProfile?.subscription_plan || "free").replace(/^./, (value) => value.toUpperCase())} plan
             </span>
           </div>
 
