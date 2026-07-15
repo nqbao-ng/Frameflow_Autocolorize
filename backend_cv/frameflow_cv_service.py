@@ -41,12 +41,15 @@ from stability_image_service import (
     generate_outpaint,
     service_status as stability_service_status,
 )
+from sketch_analysis_service import analyze_sketch, SketchAnalysisServiceError
+from creative_job_worker import enqueue_job, start_worker, stop_worker, worker_status
 
 # -----------------------------------------------------------------------------
 # App / security
 # -----------------------------------------------------------------------------
 
 API_KEY = os.getenv("FRAMEFLOW_CV_API_KEY", "").strip()
+REQUIRE_API_KEY = os.getenv("FRAMEFLOW_REQUIRE_API_KEY", "true").strip().lower() in {"true", "1", "yes"}
 MAX_DOWNLOAD_BYTES = int(os.getenv("FRAMEFLOW_MAX_IMAGE_BYTES", str(12 * 1024 * 1024)))
 DEFAULT_TIMEOUT = float(os.getenv("FRAMEFLOW_HTTP_TIMEOUT", "25"))
 
@@ -62,6 +65,8 @@ app.add_middleware(
 
 def require_api_key(x_frameflow_key: Optional[str]) -> None:
     if not API_KEY:
+        if REQUIRE_API_KEY:
+            raise HTTPException(status_code=503, detail="FRAMEFLOW_CV_API_KEY is not configured")
         return
     if x_frameflow_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid FRAMEFLOW_CV_API_KEY")
@@ -74,6 +79,7 @@ def health() -> Dict[str, Any]:
         "service": "frameflow_cv_service",
         "bedrock_enabled": bedrock_enabled(),
         "stability_image_services": stability_service_status(),
+        "creative_worker": worker_status(),
     }
 
 @app.get("/")
@@ -129,6 +135,15 @@ class ColorizeFrameRequest(BaseModel):
 
     role_memory: List[RoleMemoryItem] = Field(default_factory=list)
     settings: AnalyzeSettings = Field(default_factory=AnalyzeSettings)
+
+
+class CreativeJobEnqueueRequest(BaseModel):
+    job_id: str = Field(min_length=1, max_length=100)
+
+
+class StabilitySketchAnalysisRequest(BaseModel):
+    image_base64: str
+    style_hint: Optional[str] = None
 
 
 class StabilitySketchRequest(BaseModel):
@@ -837,10 +852,41 @@ def vision_suggest(req: VisionSuggestRequest, x_frameflow_key: Optional[str] = H
 # -----------------------------------------------------------------------------
 
 
+@app.on_event("startup")
+def start_creative_worker_on_startup() -> None:
+    start_worker()
+
+
+@app.on_event("shutdown")
+def stop_creative_worker_on_shutdown() -> None:
+    stop_worker()
+
+
 @app.get("/v1/creative/status")
 def creative_status(x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
     require_api_key(x_frameflow_key)
-    return stability_service_status()
+    return {**stability_service_status(), "creative_worker": worker_status()}
+
+
+@app.post("/v1/creative/jobs/enqueue")
+def creative_enqueue_job(req: CreativeJobEnqueueRequest, x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    require_api_key(x_frameflow_key)
+    try:
+        return enqueue_job(req.job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/v1/creative/analyze-sketch")
+def creative_analyze_sketch(req: StabilitySketchAnalysisRequest, x_frameflow_key: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    require_api_key(x_frameflow_key)
+    try:
+        return analyze_sketch(
+            image_base64=req.image_base64,
+            style_hint=req.style_hint,
+        )
+    except SketchAnalysisServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.details) from exc
 
 
 @app.post("/v1/creative/sketch")

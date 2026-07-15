@@ -117,3 +117,97 @@
   .creative-ratio-grid { grid-template-columns: repeat(2,1fr); }
   .creative-dimensions { grid-template-columns: repeat(2,1fr); }
 }
+
+.creative-analysis-note {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid rgba(34,197,94,.24);
+  background: rgba(34,197,94,.08);
+  color: #bbf7d0;
+  font-size: 11px;
+}
+.creative-analysis-note.warning {
+  border-color: rgba(245,158,11,.3);
+  background: rgba(245,158,11,.08);
+  color: #fde68a;
+}
+.creative-inline-note {
+  margin-top: 10px;
+  color: #aab2d5;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.creative-details-panel summary,
+.creative-advanced summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #d8d9e8;
+  font-size: 12px;
+  font-weight: 700;
+}
+.creative-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.creative-inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.creative-label textarea[readonly] {
+  opacity: .92;
+}
+
+@media (max-width: 760px) {
+  .creative-inline-fields { grid-template-columns: 1fr; }
+}
+
+.creative-mode-tabs button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+  transform: none;
+}
+.creative-job-progress {
+  width: min(300px, 100%);
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #202033;
+  border: 1px solid #303047;
+}
+.creative-job-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7c3aed, #ff2e9a);
+  transition: width .35s ease;
+}
+.creative-loading-state > small {
+  color: #7e86a4;
+  font-size: 10px;
+}
+.creative-cancel-job {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid rgba(239,68,68,.35);
+  background: rgba(239,68,68,.08);
+  color: #fca5a5;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.creative-result-actions button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}

@@ -107,7 +107,7 @@ export function getFrameFlowBackendConfig() {
 export async function callFrameFlowBackend(path, { method = 'POST', payload } = {}) {
   const { baseUrl, apiKey } = getFrameFlowBackendConfig();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 55000);
+  const timeoutId = setTimeout(() => controller.abort(), 52000);
 
   try {
     const response = await fetch(`${baseUrl}${path}`, {
@@ -130,7 +130,7 @@ export async function callFrameFlowBackend(path, { method = 'POST', payload } = 
     return data;
   } catch (error) {
     if (error?.name === 'AbortError') {
-      const timeoutError = new Error('Amazon Bedrock generation timed out through the FrameFlow backend');
+      const timeoutError = new Error('The FrameFlow creative backend took too long to respond. Please retry once or use a smaller image.');
       timeoutError.statusCode = 504;
       throw timeoutError;
     }

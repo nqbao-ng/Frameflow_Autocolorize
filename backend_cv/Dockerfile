@@ -13,6 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY frameflow_cv_service.py .
 COPY vision_ai_service.py .
 COPY stability_image_service.py .
+COPY sketch_analysis_service.py .
+COPY creative_job_worker.py .
 
 EXPOSE 8080
 

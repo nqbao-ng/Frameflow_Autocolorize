@@ -51,11 +51,11 @@ export function ProjectCard({
   return (
     <div
       style={{
-        background: "white", borderRadius: 20, overflow: "hidden",
+        background: "#181827", borderRadius: 20, overflow: "hidden",
         boxShadow: isRecentlyActive 
           ? "0 12px 32px rgba(168,85,247,0.25), 0 0 20px rgba(168,85,247,0.15)"
           : "0 4px 20px rgba(0,0,0,0.08)", 
-        border: isRecentlyActive ? "2px solid #A855F7" : "1px solid #F1F5F9",
+        border: isRecentlyActive ? "2px solid #A855F7" : "1px solid #2A2A40",
         transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)", 
         position: "relative", 
         cursor: "pointer",

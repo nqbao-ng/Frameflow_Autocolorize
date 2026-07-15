@@ -140,12 +140,16 @@ export function ProjectsPage() {
               <span style={{ fontSize: 13, color: "#AAB2D5" }}>{projects.reduce((sum, p) => sum + (p.frames || 0), 0)} Frames</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>✅</span>
-              <span style={{ fontSize: 13, color: "#AAB2D5" }}>{projects.filter(p => p.status === "complete").length} Completed</span>
+              <span style={{ fontSize: 14 }}>🎨</span>
+              <span style={{ fontSize: 13, color: "#AAB2D5" }}>{projects.reduce((sum, p) => sum + (p.coloredFrames || 0), 0)} Colored Frames</span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>📝</span>
-              <span style={{ fontSize: 13, color: "#AAB2D5" }}>{projects.filter(p => p.status === "draft").length} Draft</span>
+              <span style={{ fontSize: 14 }}>✅</span>
+              <span style={{ fontSize: 13, color: "#AAB2D5" }}>{(() => {
+                const total = projects.reduce((sum, p) => sum + (p.frames || 0), 0);
+                const colored = projects.reduce((sum, p) => sum + (p.coloredFrames || 0), 0);
+                return total > 0 ? Math.round((colored / total) * 100) : 0;
+              })()}% Overall Completion</span>
             </div>
           </div>
         )}

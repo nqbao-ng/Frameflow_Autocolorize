@@ -51,13 +51,28 @@ export function fileToObjectUrl(file: File) {
   return URL.createObjectURL(file);
 }
 
-export function downloadDataUrl(dataUrl: string, filename: string) {
+export async function downloadDataUrl(dataUrl: string, filename: string) {
+  let downloadUrl = dataUrl;
+  let temporaryUrl: string | null = null;
+
+  if (!dataUrl.startsWith("data:") && !dataUrl.startsWith("blob:")) {
+    const response = await fetch(dataUrl);
+    if (!response.ok) throw new Error("Unable to download the generated image.");
+    const blob = await response.blob();
+    temporaryUrl = URL.createObjectURL(blob);
+    downloadUrl = temporaryUrl;
+  }
+
   const link = document.createElement("a");
-  link.href = dataUrl;
+  link.href = downloadUrl;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
+
+  if (temporaryUrl) {
+    window.setTimeout(() => URL.revokeObjectURL(temporaryUrl as string), 1000);
+  }
 }
 
 export function calculateExpansion(

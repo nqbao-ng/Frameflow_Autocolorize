@@ -10,7 +10,7 @@ import {
   ChevronRight,
   FolderKanban,
   WandSparkles,
-  CreditCard,
+  LayoutDashboard,
 } from "lucide-react";
 import { BrandLogo } from "@/shared/components/BrandLogo";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -46,10 +46,12 @@ export function ProjectsHeader() {
     { icon: ShieldCheck, label: "Security", to: "/settings?tab=security" },
   ];
 
+  const locationState = (location.state || {}) as { returnTo?: string };
+  const dashboardTarget = locationState.returnTo || "/projects";
   const navigation = [
     { icon: FolderKanban, label: "Projects", to: "/projects" },
     { icon: WandSparkles, label: "AI Creative Studio", to: "/creative-studio" },
-    { icon: CreditCard, label: "Pricing", to: "/#pricing" },
+    { icon: LayoutDashboard, label: "Dashboard", to: dashboardTarget },
   ];
 
   return (
@@ -79,7 +81,7 @@ export function ProjectsHeader() {
 
         <nav style={{ display: "flex", alignItems: "center", gap: 5, flex: 1 }} aria-label="Application navigation">
           {navigation.map(({ icon: Icon, label, to }) => {
-            const active = to !== "/#pricing" && location.pathname.startsWith(to);
+            const active = label !== "Dashboard" && location.pathname.startsWith(to);
             return (
               <Link
                 key={label}

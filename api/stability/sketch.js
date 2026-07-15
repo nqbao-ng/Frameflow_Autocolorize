@@ -29,6 +29,7 @@ export default async function handler(req, res) {
         prompt,
         negative_prompt: negativePrompt || null,
         control_strength: controlStrength,
+        style_preset: body.stylePreset || null,
         seed: body.seed !== undefined && body.seed !== null && body.seed !== ''
           ? Math.max(0, Math.round(Number(body.seed)))
           : null,

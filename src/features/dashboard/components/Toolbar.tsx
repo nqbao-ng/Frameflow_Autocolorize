@@ -1,5 +1,5 @@
 
-import { Link } from "react-router";
+import { Link, useParams } from "react-router";
 import {
   ChevronRight,
   RotateCcw,
@@ -50,6 +50,7 @@ const divider: React.CSSProperties = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function Toolbar({ ctx, projectName }: ToolbarProps) {
+  const { projectId } = useParams();
   const {
     activeFrame,
     undoStack,
@@ -196,6 +197,9 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
             mode: "outpaint",
             sourceImage: activeCreativeSource,
             sourceName: activeFrameData?.name || `Frame ${activeFrame + 1}`,
+            projectId,
+            frameId: activeFrameData?.id || null,
+            returnTo: projectId ? `/dashboard/${projectId}` : "/projects",
           }}
           title="Open the current frame in AI Creative Studio"
           style={{
