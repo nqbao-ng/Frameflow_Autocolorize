@@ -13,7 +13,6 @@ type FrameRow = {
   source_image_url?: string | null;
   colored_image_url?: string | null;
   created_at?: string | null;
-  updated_at?: string | null;
 };
 
 type ProjectRow = {
@@ -73,8 +72,7 @@ const PROJECT_SELECT = `
     frame_index,
     source_image_url,
     colored_image_url,
-    created_at,
-    updated_at
+    created_at
   )
 `;
 

@@ -55,11 +55,13 @@ export function useProjects() {
   const handleCreateProject = useCallback(async () => {
     if (!newProjectName.trim()) return;
     try {
+      setError(null);
       setIsCreating(true);
       const created = await createProject({ name: newProjectName.trim() });
       setProjects((prev) => [created, ...prev]);
       setNewProjectName("");
       setShowNewModal(false);
+      setError(null);
       // navigate("/dashboard");
       navigate(
           `/dashboard/${created.id}`,
@@ -74,9 +76,11 @@ export function useProjects() {
   // ── Rename ─────────────────────────────────────────────────────────────────
   const handleRename = useCallback(async (id: string, name: string) => {
     try {
+      setError(null);
       setIsRenaming(true);
       const updated = await updateProject(id, { name });
       setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -105,9 +109,11 @@ export function useProjects() {
   // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
     try {
+      setError(null);
       setDeletingId(id);
       await deleteProject(id);
       setProjects((prev) => prev.filter((p) => p.id !== id));
+      setError(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {

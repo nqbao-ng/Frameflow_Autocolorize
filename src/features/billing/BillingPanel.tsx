@@ -109,13 +109,15 @@ export function BillingPanel() {
       <div style={card}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>Plans</div>
         <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>
-          Payments are processed securely by payOS using VietQR. Paid plans are activated for the listed number of days and do not auto-renew.
+          Payments are processed securely by payOS using VietQR. The Pro plan is billed monthly and does not auto-renew.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
           {(summary?.plans || []).map((plan) => {
             const isCurrent = plan.code === activePlan;
             const isRequested = requestedPlan === plan.code;
             const isPaid = plan.priceVnd > 0;
+            const isStudio = plan.code === "studio";
+            const displayPriceVnd = plan.code === "pro" ? 499000 : plan.priceVnd;
             const isCheckingOut = checkoutPlan === plan.code;
             const isDowngrade = Boolean(
               summary?.subscription?.status === "active"
@@ -137,8 +139,10 @@ export function BillingPanel() {
                 <div style={{ fontSize: 17, fontWeight: 800, color: "#1E293B", marginBottom: 5 }}>{plan.name}</div>
                 <div style={{ minHeight: 36, fontSize: 12, color: "#64748B", lineHeight: 1.45, marginBottom: 12 }}>{plan.description}</div>
                 <div style={{ marginBottom: 14 }}>
-                  <span style={{ fontSize: 24, fontWeight: 800, color: "#1E293B" }}>{formatVnd(plan.priceVnd)}</span>
-                  {isPaid && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>for {plan.durationDays} days</div>}
+                  <span style={{ fontSize: 24, fontWeight: 800, color: "#1E293B" }}>
+                    {isStudio ? "Coming Soon" : formatVnd(displayPriceVnd)}
+                  </span>
+                  {plan.code === "pro" && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>/month</div>}
                 </div>
                 <ul style={{ listStyle: "none", padding: 0, margin: "0 0 17px" }}>
                   {plan.features.map((feature) => (
@@ -147,7 +151,15 @@ export function BillingPanel() {
                     </li>
                   ))}
                 </ul>
-                {isPaid ? (
+                {isStudio ? (
+                  <button
+                    type="button"
+                    disabled
+                    style={{ width: "100%", padding: "10px 0", borderRadius: 9, border: "none", background: "#CBD5E1", color: "#64748B", fontSize: 13, fontWeight: 700, cursor: "not-allowed" }}
+                  >
+                    Coming Soon
+                  </button>
+                ) : isPaid ? (
                   <button
                     onClick={() => void checkout(plan.code)}
                     disabled={Boolean(checkoutPlan) || isDowngrade}

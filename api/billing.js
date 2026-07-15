@@ -293,6 +293,12 @@ async function handleCreateCheckout(req, res) {
   const body = await readJsonBody(req);
   const planCode = String(body.planCode || '').trim().toLowerCase();
 
+  if (planCode === 'studio') {
+    const error = new Error('The Studio plan is coming soon');
+    error.statusCode = 409;
+    throw error;
+  }
+
   const { data: plan, error: planError } = await supabase
     .from('billing_plans')
     .select('*')
@@ -386,7 +392,7 @@ async function handleCreateCheckout(req, res) {
         ...signatureData,
         buyerName: String(user.user_metadata?.full_name || '').slice(0, 100) || undefined,
         buyerEmail: user.email || undefined,
-        items: [{ name: `FrameFlow ${plan.name} - ${plan.duration_days} days`, quantity: 1, price: plan.price_vnd }],
+        items: [{ name: `FrameFlow ${plan.name} - 1 month`, quantity: 1, price: plan.price_vnd }],
         expiredAt: Math.floor(expiresAt.getTime() / 1000),
         signature: createPayOSSignature(signatureData, checksumKey),
       },

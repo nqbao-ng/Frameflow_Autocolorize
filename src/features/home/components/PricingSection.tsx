@@ -21,7 +21,7 @@ const FALLBACK_PLANS: BillingPlan[] = [
     code: "pro",
     name: "Pro",
     description: "For individual artists and frequent animation work",
-    priceVnd: 99000,
+    priceVnd: 499000,
     durationDays: 30,
     creditsGrant: 500,
     projectLimit: 50,
@@ -52,7 +52,11 @@ export function PricingSection() {
     let cancelled = false;
     fetchBillingPlans()
       .then((remotePlans) => {
-        if (!cancelled && remotePlans.length) setPlans(remotePlans);
+        if (!cancelled && remotePlans.length) {
+          setPlans(remotePlans.map((plan) => (
+            plan.code === "pro" ? { ...plan, priceVnd: 499000 } : plan
+          )));
+        }
       })
       .catch(() => {
         // Keep build-time fallback when billing has not been deployed yet.
@@ -65,32 +69,44 @@ export function PricingSection() {
       <div className="landing-section-heading">
         <div className="landing-section-eyebrow">PRICING</div>
         <h2>Simple, transparent pricing</h2>
-        <p>Start free, then activate a 30-day plan securely with payOS and VietQR. Paid plans do not auto-renew.</p>
+        <p>Start free, then upgrade to Pro monthly with payOS and VietQR. Paid plans do not auto-renew.</p>
       </div>
 
       <div className="landing-pricing-grid">
         {plans.map((plan) => {
           const isFree = plan.priceVnd === 0;
           const isPro = plan.code === "pro";
+          const isStudio = plan.code === "studio";
           return (
             <article key={plan.code} className={`landing-pricing-card ${isPro ? "landing-pricing-card-pro" : ""}`}>
               {isPro && <div className="landing-pricing-badge">MOST POPULAR</div>}
               <div className={`landing-pricing-plan ${isPro ? "landing-pricing-plan-pro" : ""}`}>{plan.name} Plan</div>
               <div className="landing-pricing-price">
-                <strong>{formatVnd(plan.priceVnd)}</strong>
-                <span>{isFree ? "forever" : `/${plan.durationDays} days`}</span>
+                <strong>{isStudio ? "Coming Soon" : formatVnd(plan.priceVnd)}</strong>
+                <span>{isFree ? "forever" : isPro ? "/month" : ""}</span>
               </div>
               <div className={`landing-pricing-features ${isPro ? "landing-pricing-features-pro" : ""}`}>
                 {plan.features.map((feature) => (
                   <div key={feature}><Check size={16} /> <span>{feature}</span></div>
                 ))}
               </div>
-              <Link
-                to={isFree ? "/signup" : `/settings?tab=billing&plan=${plan.code}`}
-                className={`landing-pricing-button ${isPro ? "landing-pricing-button-primary" : "landing-pricing-button-secondary"}`}
-              >
-                {isFree ? "Get Started Free" : `Choose ${plan.name}`} {!isFree && <ArrowRight size={16} />}
-              </Link>
+              {isStudio ? (
+                <button
+                  type="button"
+                  disabled
+                  className="landing-pricing-button landing-pricing-button-secondary"
+                  style={{ cursor: "not-allowed", opacity: 0.65 }}
+                >
+                  Coming Soon
+                </button>
+              ) : (
+                <Link
+                  to={isFree ? "/signup" : `/settings?tab=billing&plan=${plan.code}`}
+                  className={`landing-pricing-button ${isPro ? "landing-pricing-button-primary" : "landing-pricing-button-secondary"}`}
+                >
+                  {isFree ? "Get Started Free" : `Choose ${plan.name}`} {!isFree && <ArrowRight size={16} />}
+                </Link>
+              )}
             </article>
           );
         })}
