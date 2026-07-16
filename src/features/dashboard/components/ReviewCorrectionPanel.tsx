@@ -127,15 +127,17 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
     setSelectedColor(selectedSegment.color_hex || selectedSegment.suggested_color || activeColor || "#3B82F6");
   }, [activeColor, selectedSegment]);
 
-  if (!projectId || !currentFrame) return null;
-
   const reviewFrameId = review?.job?.current_review_frame_id || null;
-  const currentNeedsReview = review?.has_review || review?.status === "needs_review_not_reference";
-  const visibleReason = review?.reason?.trim() === "Lineart-preserving CV propagation completed." ? "" : review?.reason;
-  const hasSegments = Boolean(review?.segments?.length);
+  const currentNeedsReview = Boolean(review?.has_review) || review?.status === "needs_review_not_reference";
+
   useEffect(() => {
     if (!currentNeedsReview) setApplyScope("segment_only");
   }, [currentNeedsReview]);
+
+  if (!projectId || !currentFrame) return null;
+
+  const visibleReason = review?.reason?.trim() === "Lineart-preserving CV propagation completed." ? "" : review?.reason;
+  const hasSegments = Boolean(review?.segments?.length);
 
 
   if (!currentNeedsReview && reviewFrameId && reviewFrameId !== currentFrame.id) {
