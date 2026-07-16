@@ -5,8 +5,8 @@ import {
   getSupabaseAdmin,
   sendError,
   sendJson,
-} from '../../server/colorization-shared.js';
-import { ensureProjectOwnership, requireUser } from '../../server/account-shared.js';
+} from '../../colorization-shared.js';
+import { ensureProjectOwnership, requireUser } from '../../account-shared.js';
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['GET'])) return;

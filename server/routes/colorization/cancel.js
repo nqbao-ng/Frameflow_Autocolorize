@@ -6,13 +6,13 @@ import {
   readJsonBody,
   sendError,
   sendJson,
-} from '../../server/colorization-shared.js';
+} from '../../colorization-shared.js';
 import {
   ensureProjectOwnership,
   recordUsageEvent,
   releaseUsage,
   requireUser,
-} from '../../server/account-shared.js';
+} from '../../account-shared.js';
 
 const ACTIVE_STATUSES = [JOB_STATUS.CREATED, JOB_STATUS.RUNNING, JOB_STATUS.WAITING_REVIEW];
 

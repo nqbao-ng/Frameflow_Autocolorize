@@ -13,7 +13,7 @@ import {
   sendError,
   sendJson,
   uploadBase64Asset,
-} from '../../server/colorization-shared.js';
+} from '../../colorization-shared.js';
 import {
   COST_RATES,
   RESOURCE_TYPES,
@@ -24,7 +24,7 @@ import {
   recordUsageEvent,
   releaseUsage,
   requireUser,
-} from '../../server/account-shared.js';
+} from '../../account-shared.js';
 
 async function findNextPendingJobFrame(supabase, job, nextIndex) {
   const processingFrameIds = Array.isArray(job.settings?.processing_frame_ids)

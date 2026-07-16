@@ -8,8 +8,8 @@ import {
   readJsonBody,
   sendError,
   sendJson,
-} from '../../server/colorization-shared.js';
-import { enforceApiRateLimit, ensureProjectOwnership, recordUsageEvent, requireUser } from '../../server/account-shared.js';
+} from '../../colorization-shared.js';
+import { enforceApiRateLimit, ensureProjectOwnership, recordUsageEvent, requireUser } from '../../account-shared.js';
 
 const MAX_MANUAL_SUGGESTIONS_PER_FRAME = Math.max(1, Number(process.env.FRAMEFLOW_MAX_VISION_SUGGESTIONS_PER_FRAME) || 3);
 

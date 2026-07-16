@@ -8,7 +8,7 @@ import {
   readJsonBody,
   sendError,
   sendJson,
-} from '../../server/colorization-shared.js';
+} from '../../colorization-shared.js';
 import {
   RESOURCE_TYPES,
   enforceApiRateLimit,
@@ -17,7 +17,7 @@ import {
   releaseUsage,
   requireUser,
   reserveUsage,
-} from '../../server/account-shared.js';
+} from '../../account-shared.js';
 
 function frameIndex(frame) {
   return Number(frame?.frame_index ?? 0);
