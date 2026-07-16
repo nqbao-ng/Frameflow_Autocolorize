@@ -48,6 +48,20 @@ CREATIVE_MAX_ATTEMPTS = int(os.getenv("FRAMEFLOW_CREATIVE_MAX_ATTEMPTS", "3"))
 CREATIVE_POLL_WAIT_SECONDS = min(20, max(1, int(os.getenv("FRAMEFLOW_CREATIVE_POLL_WAIT_SECONDS", "20"))))
 CREATIVE_BUCKET = os.getenv("FRAMEFLOW_CREATIVE_BUCKET", "creative-assets").strip() or "creative-assets"
 
+
+def _env_float(name: str) -> float:
+    try:
+        value = float(os.getenv(name, "0") or 0)
+        return max(0.0, value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+CREATIVE_COMPUTE_COST_PER_SECOND_USD = _env_float("FRAMEFLOW_CREATIVE_COMPUTE_COST_PER_SECOND_USD")
+DATA_TRANSFER_COST_PER_GB_USD = _env_float("FRAMEFLOW_DATA_TRANSFER_COST_PER_GB_USD")
+SKETCH_MODEL_COST_USD = _env_float("FRAMEFLOW_SKETCH_MODEL_COST_USD")
+OUTPAINT_MODEL_COST_USD = _env_float("FRAMEFLOW_OUTPAINT_MODEL_COST_USD")
+
 _worker_thread: Optional[threading.Thread] = None
 _worker_lock = threading.Lock()
 _stop_event = threading.Event()
@@ -122,6 +136,42 @@ def update_job(job_id: str, values: Dict[str, Any], *, statuses: Optional[list[s
     return rows[0] if rows else None
 
 
+
+
+def call_rpc(function_name: str, payload: Dict[str, Any]) -> Any:
+    response = requests.post(
+        f"{SUPABASE_URL}/rest/v1/rpc/{function_name}",
+        headers=_headers(),
+        data=json.dumps(payload),
+        timeout=20,
+    )
+    response.raise_for_status()
+    return response.json() if response.content else None
+
+
+def create_usage_event(values: Dict[str, Any]) -> None:
+    try:
+        response = requests.post(
+            f"{SUPABASE_URL}/rest/v1/usage_events",
+            headers=_headers(prefer="return=minimal"),
+            data=json.dumps(values),
+            timeout=20,
+        )
+        response.raise_for_status()
+    except Exception:  # noqa: BLE001
+        LOGGER.exception("Unable to record creative usage event")
+
+
+def consume_credit_reservation(reservation_id: Optional[str]) -> None:
+    if reservation_id:
+        call_rpc("consume_frameflow_usage", {"p_reservation_id": reservation_id, "p_amount": None})
+
+
+def release_credit_reservation(reservation_id: Optional[str]) -> None:
+    if reservation_id:
+        call_rpc("release_frameflow_usage", {"p_reservation_id": reservation_id})
+
+
 def download_storage_object(bucket: str, path: str) -> bytes:
     encoded_path = quote(path, safe="/")
     response = requests.get(
@@ -193,7 +243,7 @@ def _invoke_job(job: Dict[str, Any]) -> Dict[str, Any]:
     settings = job.get("settings") or {}
 
     if job.get("job_type") == "outpaint":
-        return generate_outpaint(
+        result = generate_outpaint(
             image_base64=image_base64,
             prompt=job.get("prompt"),
             left=int(settings.get("left") or 0),
@@ -204,15 +254,17 @@ def _invoke_job(job: Dict[str, Any]) -> Dict[str, Any]:
             style_preset=settings.get("style_preset"),
             seed=settings.get("seed"),
         )
-
-    return generate_control_sketch(
-        image_base64=image_base64,
-        prompt=str(job.get("prompt") or ""),
-        negative_prompt=job.get("negative_prompt"),
-        control_strength=float(settings.get("control_strength") or 0.9),
-        style_preset=settings.get("style_preset"),
-        seed=settings.get("seed"),
-    )
+    else:
+        result = generate_control_sketch(
+            image_base64=image_base64,
+            prompt=str(job.get("prompt") or ""),
+            negative_prompt=job.get("negative_prompt"),
+            control_strength=float(settings.get("control_strength") or 0.9),
+            style_preset=settings.get("style_preset"),
+            seed=settings.get("seed"),
+        )
+    result["_source_bytes"] = len(source)
+    return result
 
 
 def _retryable(error: Exception) -> bool:
@@ -241,11 +293,12 @@ def process_job(job_id: str, receive_count: int = 1) -> str:
             "started_at": job.get("started_at") or utc_now(),
             "error_message": None,
         },
-        statuses=["queued", "processing"],
+        statuses=["queued"],
     )
     if not claimed:
         return "ignore"
 
+    started_monotonic = time.monotonic()
     try:
         result = _invoke_job(claimed)
         if _is_cancelled(job_id):
@@ -259,6 +312,7 @@ def process_job(job_id: str, receive_count: int = 1) -> str:
         if _is_cancelled(job_id):
             return "delete"
 
+        consume_credit_reservation(claimed.get("usage_reservation_id"))
         update_job(
             job_id,
             {
@@ -279,6 +333,34 @@ def process_job(job_id: str, receive_count: int = 1) -> str:
             },
             statuses=["processing"],
         )
+        processing_seconds = round(time.monotonic() - started_monotonic, 3)
+        input_bytes = int(result.get("_source_bytes") or 0)
+        model_cost = OUTPAINT_MODEL_COST_USD if claimed.get("job_type") == "outpaint" else SKETCH_MODEL_COST_USD
+        estimated_cost = (
+            processing_seconds * CREATIVE_COMPUTE_COST_PER_SECOND_USD
+            + ((input_bytes + len(result_bytes)) / (1024 ** 3)) * DATA_TRANSFER_COST_PER_GB_USD
+            + model_cost
+        )
+        create_usage_event({
+            "user_id": claimed["user_id"],
+            "project_id": claimed.get("project_id"),
+            "job_id": job_id,
+            "event_type": "creative_job_completed",
+            "resource_type": "creative_credits",
+            "quantity": int(claimed.get("creative_credit_cost") or 0),
+            "processing_seconds": processing_seconds,
+            "input_bytes": input_bytes,
+            "output_bytes": len(result_bytes),
+            "model_id": result.get("model_id"),
+            "provider": result.get("provider") or "amazon-bedrock",
+            "status": "completed",
+            "estimated_cost_usd": round(estimated_cost, 8) if estimated_cost > 0 else None,
+            "metadata": {
+                "job_type": claimed.get("job_type"),
+                "finish_reason": result.get("finish_reason"),
+                "region": result.get("region"),
+            },
+        })
         return "delete"
     except Exception as exc:  # noqa: BLE001
         LOGGER.exception("Creative job %s failed on attempt %s", job_id, attempts)
@@ -295,6 +377,7 @@ def process_job(job_id: str, receive_count: int = 1) -> str:
             )
             return "retry"
 
+        release_credit_reservation(claimed.get("usage_reservation_id"))
         update_job(
             job_id,
             {
@@ -305,6 +388,17 @@ def process_job(job_id: str, receive_count: int = 1) -> str:
             },
             statuses=["processing", "queued"],
         )
+        create_usage_event({
+            "user_id": claimed["user_id"],
+            "project_id": claimed.get("project_id"),
+            "job_id": job_id,
+            "event_type": "creative_job_failed",
+            "resource_type": "creative_credits",
+            "quantity": int(claimed.get("creative_credit_cost") or 0),
+            "processing_seconds": round(time.monotonic() - started_monotonic, 3),
+            "status": "released",
+            "metadata": {"job_type": claimed.get("job_type"), "error": message[:1000]},
+        })
         return "delete"
 
 

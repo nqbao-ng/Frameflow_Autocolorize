@@ -67,35 +67,8 @@ export async function signIn(credentials: SignInCredentials): Promise<AuthResult
 
   if (error) return { success: false, error: error.message };
 
-   // Verify profile exists for this user (fallback in case trigger didn't create it)
-   if (data.user) {
-     const { data: existingProfile } = await supabase
-       .from('profiles')
-       .select('id')
-       .eq('id', data.user.id)
-       .maybeSingle();
+   // The database trigger creates the profile with safe defaults.
 
-     // If no profile exists, create one
-     if (!existingProfile) {
-       const fullName = (data.user.user_metadata as any)?.full_name || '';
-       const { error: profileError } = await supabase
-         .from('profiles')
-         .insert({
-           id: data.user.id,
-           email: data.user.email,
-           full_name: fullName,
-           role: 'user',
-           credits: 0,
-           subscription_plan: 'free',
-           created_at: new Date().toISOString(),
-           updated_at: new Date().toISOString(),
-         });
-       
-       if (profileError) {
-         console.warn('Failed to create profile during sign in:', profileError);
-       }
-     }
-   }
 
   return { success: true };
 }
@@ -119,36 +92,8 @@ export async function signUp(credentials: SignUpCredentials): Promise<AuthResult
 
   console.log('[signUp] Auth user created:', data.user?.id);
 
-  // Create profile record (fallback if trigger fails)
-  if (data.user) {
-    console.log('[signUp] Creating profile for user:', data.user.id);
-    
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert({
-        id: data.user.id,
-        email: credentials.email,
-        full_name: credentials.fullName ?? '',
-        role: 'user',
-        credits: 0,
-        subscription_plan: 'free',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
+  // The database trigger creates the profile and starts the 3-day trial.
 
-    if (profileError) {
-      console.error('[signUp] Profile creation failed:', profileError.message);
-      // Still return success because user was created in auth
-      // Profile will be created on first login if trigger failed
-      return { 
-        success: true, 
-        needsEmailVerification: true,
-        // Optional: could return warning here
-      };
-    }
-    
-    console.log('[signUp] Profile created successfully');
-  }
 
   // Supabase gửi verification email — user cần xác nhận trước khi login
   return { success: true, needsEmailVerification: true };

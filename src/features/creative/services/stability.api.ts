@@ -51,55 +51,6 @@ async function getAccessToken() {
   return token;
 }
 
-async function requestImage(url: string, payload: Record<string, unknown>): Promise<StabilityImageResponse> {
-  const token = await getAccessToken();
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 58000);
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const contentType = response.headers.get("content-type") || "";
-    if (!response.ok) {
-      const data = contentType.includes("application/json")
-        ? await response.json().catch(() => null)
-        : null;
-      const text = data ? null : await response.text().catch(() => "");
-      const details = data?.details || data?.error || text || `Request failed (${response.status})`;
-      throw new Error(typeof details === "string" ? details : JSON.stringify(details));
-    }
-
-    if (!contentType.startsWith("image/")) {
-      throw new Error("The Amazon Bedrock generation API returned an unexpected response.");
-    }
-
-    const blob = await response.blob();
-    return {
-      ok: true,
-      imageDataUrl: URL.createObjectURL(blob),
-      mimeType: blob.type || contentType,
-      seed: response.headers.get("x-stability-seed"),
-      finishReason: response.headers.get("x-stability-finish-reason"),
-      modelId: response.headers.get("x-bedrock-model-id"),
-    };
-  } catch (error) {
-    if ((error as Error).name === "AbortError") {
-      throw new Error("Image generation timed out. Please retry once or use a smaller image.");
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
 async function requestJson<T>(url: string, init?: RequestInit, timeoutMs = 30000): Promise<T> {
   const token = await getAccessToken();
   const controller = new AbortController();
@@ -138,30 +89,6 @@ export async function analyzeSketch(input: { imageDataUrl: string; styleHint?: s
     },
     body: JSON.stringify(input),
   }, 40000);
-}
-
-export async function generateSketchConcept(input: {
-  imageDataUrl: string;
-  prompt: string;
-  negativePrompt?: string;
-  controlStrength?: number;
-  stylePreset?: string;
-  seed?: number | null;
-}) {
-  return requestImage("/api/stability/sketch", input);
-}
-
-export async function expandScene(input: {
-  imageDataUrl: string;
-  prompt?: string;
-  left: number;
-  right: number;
-  up: number;
-  down: number;
-  creativity?: number;
-  seed?: number | null;
-}) {
-  return requestImage("/api/stability/outpaint", input);
 }
 
 export async function getBedrockStabilityStatus() {

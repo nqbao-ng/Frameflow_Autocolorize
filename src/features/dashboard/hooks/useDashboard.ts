@@ -15,7 +15,9 @@ import {
 } from "../services/frame.api";
 import type { ToastMessage } from "../components/Toast";
 import {
+  cancelColorizationJob,
   continueColorizationJob,
+  getColorizationState,
   getFrameReviewState,
   startColorizationJob,
   type ReviewState,
@@ -163,6 +165,7 @@ export function useDashboard() {
 
   // AI
   const [isColoring, setIsColoring] = useState(false);
+  const [colorizationProgress, setColorizationProgress] = useState<{ processed: number; total: number; status: string } | null>(null);
   const [frameReview, setFrameReview] = useState<ReviewState | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [selectedSegmentId, setSelectedSegmentId] = useState<number | null>(null);
@@ -520,6 +523,61 @@ export function useDashboard() {
     },
   }), [brightness, contrastVal, improveEdge, preserveLines, saturation, skinTone, blur, spill, tones]);
 
+  const runColorizationJob = useCallback(async (jobId: string, maxIterations: number, totalExpected: number) => {
+    let currentJobId = jobId;
+    let lastStatus = "running";
+    let totalProcessed = 0;
+    let noProgressCount = 0;
+    setColorizationProgress({ processed: 0, total: Math.max(1, totalExpected), status: "running" });
+
+    for (let step = 0; step < maxIterations; step += 1) {
+      const continued = await continueColorizationJob({
+        projectId: projectId!,
+        jobId: currentJobId,
+        maxSteps: 1,
+      });
+
+      currentJobId = continued.job.id;
+      lastStatus = continued.status;
+      const processedNow = Number(continued.processed_count || 0);
+      totalProcessed += processedNow;
+      setColorizationProgress({
+        processed: totalProcessed,
+        total: Math.max(totalProcessed, totalExpected),
+        status: lastStatus,
+      });
+
+      const latestFrames = await refreshFrames();
+      if (continued.frame_id) {
+        const changedIndex = latestFrames.findIndex((frame) => frame.id === continued.frame_id);
+        if (changedIndex >= 0) {
+          setFrameStates((prev) => {
+            const next = [...prev];
+            next[changedIndex] = "ai";
+            return next;
+          });
+        }
+      }
+
+      if (continued.status === "needs_review_not_reference" || continued.status === "waiting_review") {
+        const reviewFrameId = continued.frame_id || continued.job.current_review_frame_id || null;
+        if (reviewFrameId) {
+          const reviewIndex = latestFrames.findIndex((frame) => frame.id === reviewFrameId);
+          if (reviewIndex >= 0) handleFrameChange(reviewIndex);
+        }
+        break;
+      }
+
+      if (continued.status === "completed") break;
+      noProgressCount = processedNow === 0 ? noProgressCount + 1 : 0;
+      if (noProgressCount >= 2) {
+        throw new Error("Colorization không có tiến triển. Hãy kiểm tra trạng thái CV backend.");
+      }
+    }
+
+    return { jobId: currentJobId, lastStatus, totalProcessed };
+  }, [handleFrameChange, projectId, refreshFrames]);
+
   const handleCorrectionKeyframeAndRecolorNextFrames = useCallback(async () => {
     if (!projectId) {
       addToast("❌ Không tìm thấy project hiện tại", "error");
@@ -592,6 +650,11 @@ export function useDashboard() {
         8000,
       );
 
+      const previousJob = frameReview?.job;
+      if (previousJob?.id && ["created", "running", "waiting_review"].includes(previousJob.status)) {
+        await cancelColorizationJob({ projectId, jobId: previousJob.id });
+      }
+
       const started = await startColorizationJob({
         projectId,
         referenceFrameId: currentFrame.id,
@@ -601,66 +664,11 @@ export function useDashboard() {
         settings: buildColorizationSettings(),
       });
 
-      let jobId = started.job.id;
-      let lastStatus = started.job.status;
-      let totalProcessed = 0;
-      let noProgressCount = 0;
-      const maxIterations = targetFrameIds.length + 3;
-
-      for (let step = 0; step < maxIterations; step += 1) {
-        const continued = await continueColorizationJob({
-          projectId,
-          jobId,
-          maxSteps: 1,
-        });
-
-        jobId = continued.job.id;
-        lastStatus = continued.status;
-        const processedNow = Number(continued.processed_count || 0);
-        totalProcessed += processedNow;
-
-        const latestFrames = await refreshFrames();
-
-        if (continued.frame_id) {
-          const changedIndex = latestFrames.findIndex(
-            (frame) => frame.id === continued.frame_id,
-          );
-          if (changedIndex >= 0) {
-            setFrameStates((prev) => {
-              const next = [...prev];
-              next[changedIndex] = "ai";
-              return next;
-            });
-          }
-        }
-
-        if (
-          continued.status === "needs_review_not_reference" ||
-          continued.status === "waiting_review"
-        ) {
-          const reviewFrameId =
-            continued.frame_id || continued.job.current_review_frame_id || null;
-
-          if (reviewFrameId) {
-            const reviewIndex = latestFrames.findIndex(
-              (frame) => frame.id === reviewFrameId,
-            );
-            if (reviewIndex >= 0) {
-              handleFrameChange(reviewIndex);
-            }
-          }
-          break;
-        }
-
-        if (continued.status === "completed") break;
-
-        if (processedNow === 0) noProgressCount += 1;
-        else noProgressCount = 0;
-
-        if (noProgressCount >= 2) {
-          throw new Error("Recolor không có tiến triển. Kiểm tra /api/colorization/continue.");
-        }
-      }
+      const { lastStatus, totalProcessed } = await runColorizationJob(
+        started.job.id,
+        targetFrameIds.length + 3,
+        targetFrameIds.length,
+      );
 
       await refreshFrames();
       await loadFrameReview();
@@ -682,9 +690,11 @@ export function useDashboard() {
     buildColorizationSettings,
     handleSaveCurrentFrame,
     loadFrameReview,
+    frameReview,
     paintableFrames,
     projectId,
     refreshFrames,
+    runColorizationJob,
     uncoloredFiles,
     detachedReferenceFrameId,
     persistDetachedReferenceFrameId,
@@ -700,6 +710,37 @@ export function useDashboard() {
     if (uncoloredFiles.length === 0) {
       addToast("❌ Vui lòng upload sketch frames trước", "error");
       return;
+    }
+
+    try {
+      const existing = await getColorizationState({ projectId });
+      const existingStatus = existing.job?.status || "";
+      if (existing.job && existingStatus === "waiting_review") {
+        const reviewFrameId = existing.job.current_review_frame_id;
+        const reviewIndex = uncoloredFiles.findIndex((frame) => frame.id === reviewFrameId);
+        if (reviewIndex >= 0) handleFrameChange(reviewIndex);
+        await loadFrameReview();
+        addToast("⚠️ Sequence đang chờ Review/Correction trước khi tiếp tục", "info", 7000);
+        return;
+      }
+      if (existing.job && ["created", "running"].includes(existingStatus)) {
+        setIsColoring(true);
+        const pending = existing.frames.filter((frame) => frame.pipeline_status === "pending").length;
+        addToast(`⏳ Tiếp tục sequence đang xử lý (${pending} frame còn lại)...`, "info", 7000);
+        const result = await runColorizationJob(existing.job.id, pending + 3, pending);
+        await refreshFrames();
+        await loadFrameReview();
+        if (["needs_review_not_reference", "waiting_review"].includes(result.lastStatus)) {
+          addToast("⚠️ Sequence dừng ở frame cần Review/Correction", "info", 8000);
+        } else {
+          addToast(`✅ Sequence đã tiếp tục và xử lý ${result.totalProcessed} frame`, "success", 7000);
+        }
+        return;
+      }
+    } catch (stateError) {
+      console.warn("COLORIZATION RECOVERY CHECK ERROR:", stateError);
+    } finally {
+      setIsColoring(false);
     }
 
     if (!referenceImage?.id || !referenceImage.paintUrl) {
@@ -777,75 +818,11 @@ export function useDashboard() {
         settings: buildColorizationSettings(),
       });
 
-      let jobId = started.job.id;
-      let lastStatus = started.job.status;
-      let totalProcessed = 0;
-      let noProgressCount = 0;
-      const maxIterations = targetFrameIds.length + 3;
-
-      for (let step = 0; step < maxIterations; step += 1) {
-        const continued = await continueColorizationJob({
-          projectId,
-          jobId,
-          maxSteps: 1,
-        });
-
-        jobId = continued.job.id;
-        lastStatus = continued.status;
-
-        const processedNow = Number(continued.processed_count || 0);
-        totalProcessed += processedNow;
-
-        const latestFrames = await refreshFrames();
-
-        if (continued.frame_id) {
-          const changedIndex = latestFrames.findIndex(
-            (frame) => frame.id === continued.frame_id,
-          );
-
-          if (changedIndex >= 0) {
-            setFrameStates((prev) => {
-              const next = [...prev];
-              next[changedIndex] = "ai";
-              return next;
-            });
-          }
-        }
-
-        if (
-          continued.status === "needs_review_not_reference" ||
-          continued.status === "waiting_review"
-        ) {
-          const reviewFrameId =
-            continued.frame_id || continued.job.current_review_frame_id || null;
-
-          if (reviewFrameId) {
-            const reviewIndex = latestFrames.findIndex(
-              (frame) => frame.id === reviewFrameId,
-            );
-
-            if (reviewIndex >= 0) {
-              handleFrameChange(reviewIndex);
-            }
-          }
-
-          break;
-        }
-
-        if (continued.status === "completed") {
-          break;
-        }
-
-        if (processedNow === 0) {
-          noProgressCount += 1;
-        } else {
-          noProgressCount = 0;
-        }
-
-        if (noProgressCount >= 2) {
-          throw new Error("Auto Color không có tiến triển. Kiểm tra /api/colorization/continue.");
-        }
-      }
+      const { lastStatus, totalProcessed } = await runColorizationJob(
+        started.job.id,
+        targetFrameIds.length + 3,
+        targetFrameIds.length,
+      );
 
       await refreshFrames();
       await loadFrameReview();
@@ -1433,6 +1410,7 @@ const handleCustomColoredUpload = async (
 
     // AI state
     isColoring,
+    colorizationProgress,
     frameReview,
     reviewLoading,
     loadFrameReview,

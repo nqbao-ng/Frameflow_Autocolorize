@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import type { AccountEntitlements } from "@/features/account/services/entitlements.api";
 
 export type BillingPlan = {
   code: string;
@@ -8,8 +9,14 @@ export type BillingPlan = {
   durationDays: number;
   creditsGrant: number;
   projectLimit: number | null;
+  processingFrameLimit: number;
+  creativeCreditLimit: number;
   creativeDailyLimit: number;
   creativeConcurrentLimit: number;
+  trialDays: number;
+  priorityQueue: boolean;
+  highQualityExport: boolean;
+  versionHistoryDays: number;
   sortOrder: number;
   features: string[];
 };
@@ -35,10 +42,8 @@ export type PaymentOrder = {
 export type BillingSummary = {
   ok: true;
   plans: BillingPlan[];
-  profile: {
-    credits: number;
-    planCode: string;
-  };
+  entitlements: AccountEntitlements;
+  profile: { credits: number; planCode: string };
   subscription: {
     planCode: string;
     status: "active" | "expired" | "cancelled";
@@ -66,23 +71,14 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export async function fetchBillingPlans(): Promise<BillingPlan[]> {
-  const response = await fetch("/api/billing?action=plans", {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
+  const response = await fetch("/api/billing?action=plans", { headers: { Accept: "application/json" } });
   const data = await parseResponse<{ ok: true; plans: BillingPlan[] }>(response);
   return data.plans;
 }
 
 export async function fetchBillingSummary(): Promise<BillingSummary> {
   const token = await getAccessToken();
-  const response = await fetch("/api/billing?action=summary", {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await fetch("/api/billing?action=summary", { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } });
   return parseResponse<BillingSummary>(response);
 }
 
@@ -90,10 +86,7 @@ export async function createPayOSCheckout(planCode: string): Promise<PaymentOrde
   const token = await getAccessToken();
   const response = await fetch("/api/billing?action=create", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ planCode }),
   });
   const data = await parseResponse<{ ok: true; payment: PaymentOrder }>(response);
@@ -102,21 +95,11 @@ export async function createPayOSCheckout(planCode: string): Promise<PaymentOrde
 
 export async function fetchPaymentStatus(orderCode: number): Promise<PaymentOrder> {
   const token = await getAccessToken();
-  const response = await fetch(`/api/billing?action=status&orderCode=${encodeURIComponent(orderCode)}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-  });
+  const response = await fetch(`/api/billing?action=status&orderCode=${encodeURIComponent(orderCode)}`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } });
   const data = await parseResponse<{ ok: true; payment: PaymentOrder }>(response);
   return data.payment;
 }
 
 export function formatVnd(amount: number) {
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND",
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(amount);
 }

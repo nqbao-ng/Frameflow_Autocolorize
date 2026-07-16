@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import { AlertCircle, Check, CreditCard, Loader2, RefreshCw, ShieldCheck, Zap } from "lucide-react";
+import { AlertCircle, Check, CreditCard, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   createPayOSCheckout,
   fetchBillingSummary,
   formatVnd,
   type BillingSummary,
 } from "./services/billing.api";
+import { UsageCard } from "@/features/account/components/UsageCard";
 
 const card: React.CSSProperties = {
   background: "white",
@@ -85,26 +86,11 @@ export function BillingPanel() {
         </div>
       )}
 
-      <div style={{ ...card, background: "linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%)", border: "1px solid #DBEAFE" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20 }}>
-          <div>
-            <div style={{ fontSize: 12, color: "#64748B", marginBottom: 5, textTransform: "uppercase", fontWeight: 700, letterSpacing: ".06em" }}>Current plan</div>
-            <div style={{ fontSize: 30, fontWeight: 800, color: "#1E293B" }}>{activePlanName}</div>
-            <div style={{ fontSize: 13, color: "#64748B", marginTop: 6 }}>
-              {activeUntil ? `Active until ${activeUntil}. Renewing adds another plan period.` : "Free plan with no payment required."}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, color: "#64748B" }}>Available credits</div>
-              <div style={{ fontSize: 30, fontWeight: 800, color: "#1E293B" }}>{summary?.profile.credits ?? 0}</div>
-            </div>
-            <div style={{ width: 60, height: 60, borderRadius: 16, background: "#3B82F6", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Zap size={27} color="white" fill="white" />
-            </div>
-          </div>
+      {summary?.entitlements && (
+        <div style={{ marginBottom: 20 }}>
+          <UsageCard entitlements={summary.entitlements} />
         </div>
-      </div>
+      )}
 
       <div style={card}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>Plans</div>
@@ -116,8 +102,7 @@ export function BillingPanel() {
             const isCurrent = plan.code === activePlan;
             const isRequested = requestedPlan === plan.code;
             const isPaid = plan.priceVnd > 0;
-            const isStudio = plan.code === "studio";
-            const displayPriceVnd = plan.code === "pro" ? 499000 : plan.priceVnd;
+            const displayPriceVnd = plan.priceVnd;
             const isCheckingOut = checkoutPlan === plan.code;
             const isDowngrade = Boolean(
               summary?.subscription?.status === "active"
@@ -140,7 +125,7 @@ export function BillingPanel() {
                 <div style={{ minHeight: 36, fontSize: 12, color: "#64748B", lineHeight: 1.45, marginBottom: 12 }}>{plan.description}</div>
                 <div style={{ marginBottom: 14 }}>
                   <span style={{ fontSize: 24, fontWeight: 800, color: "#1E293B" }}>
-                    {isStudio ? "Coming Soon" : formatVnd(displayPriceVnd)}
+                    {formatVnd(displayPriceVnd)}
                   </span>
                   {plan.code === "pro" && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>/month</div>}
                 </div>
@@ -151,15 +136,7 @@ export function BillingPanel() {
                     </li>
                   ))}
                 </ul>
-                {isStudio ? (
-                  <button
-                    type="button"
-                    disabled
-                    style={{ width: "100%", padding: "10px 0", borderRadius: 9, border: "none", background: "#CBD5E1", color: "#64748B", fontSize: 13, fontWeight: 700, cursor: "not-allowed" }}
-                  >
-                    Coming Soon
-                  </button>
-                ) : isPaid ? (
+                {isPaid ? (
                   <button
                     onClick={() => void checkout(plan.code)}
                     disabled={Boolean(checkoutPlan) || isDowngrade}

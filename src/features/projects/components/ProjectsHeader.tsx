@@ -14,9 +14,11 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "@/shared/components/BrandLogo";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useEntitlements } from "@/features/account/hooks/useEntitlements";
 
 export function ProjectsHeader() {
   const { user, signOut } = useAuth();
+  const { entitlements } = useEntitlements();
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -156,15 +158,15 @@ export function ProjectsHeader() {
                     {user?.email}
                   </div>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(168,85,247,0.13)", color: "#D8B4FE", fontSize: 10, fontWeight: 650, padding: "2px 8px", borderRadius: 999, marginTop: 5 }}>
-                    ✦ {(user as any)?.subscription_plan || "Free"} plan
+                    ✦ {entitlements?.plan.name || (user as any)?.subscription_plan || "Free"}
                   </span>
                 </div>
               </div>
 
               <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderBottom: "1px solid #29293D" }}>
                 {[
-                  { label: "Credits", value: String((user as any)?.credits ?? 0) },
-                  { label: "Projects", value: "—" },
+                  { label: "Creative Credits", value: String(entitlements?.usage.creativeCreditsRemaining ?? (user as any)?.credits ?? 0) },
+                  { label: "Projects", value: entitlements ? `${entitlements.usage.projects}/${entitlements.limits.projects ?? "∞"}` : "—" },
                   { label: "Member", value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—" },
                 ].map((item) => (
                   <div key={item.label} style={{ flex: 1, background: "#0F0F19", border: "1px solid #26263A", borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>

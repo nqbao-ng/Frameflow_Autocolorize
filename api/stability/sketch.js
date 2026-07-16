@@ -1,74 +1,48 @@
 import {
   callFrameFlowBackend,
-  clampNumber,
   ensureMethod,
   handleApiError,
   parseImageDataUrl,
   readJsonBody,
-  requireUser,
-  sendImage,
   sendJson,
-  validatePrompt,
 } from '../../server/stability-shared.js';
+import { getSupabaseAdmin, recordUsageEvent, requireUser } from '../../server/account-shared.js';
 
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['GET', 'POST'])) return;
-
   const action = String(req.query?.action || (req.method === 'GET' ? 'status' : 'generate')).toLowerCase();
-
+  const startedAt = Date.now();
   try {
-    await requireUser(req);
-
+    const user = await requireUser(req);
     if (req.method === 'GET' || action === 'status') {
       const status = await callFrameFlowBackend('/v1/creative/status', { method: 'GET' });
       return sendJson(res, 200, status);
     }
-
+    if (action !== 'analyze') {
+      const disabled = new Error('Direct image generation is disabled. Use Creative Studio so credits can be reserved, jobs can be queued, and failures can be refunded safely.');
+      disabled.statusCode = 410;
+      throw disabled;
+    }
     const body = await readJsonBody(req);
     const { imageBase64 } = parseImageDataUrl(body.imageDataUrl);
-
-    if (action === 'analyze') {
-      const result = await callFrameFlowBackend('/v1/creative/analyze-sketch', {
-        payload: {
-          image_base64: imageBase64,
-          style_hint: body.styleHint || null,
-        },
-      });
-      return sendJson(res, 200, result);
-    }
-
-    const prompt = validatePrompt(body.prompt);
-    const negativePrompt = validatePrompt(body.negativePrompt, { required: false });
-    const controlStrength = clampNumber(body.controlStrength, 0, 1, 0.78);
-
-    const result = await callFrameFlowBackend('/v1/creative/sketch', {
-      payload: {
-        image_base64: imageBase64,
-        prompt,
-        negative_prompt: negativePrompt || null,
-        control_strength: controlStrength,
-        style_preset: body.stylePreset || null,
-        seed: body.seed !== undefined && body.seed !== null && body.seed !== ''
-          ? Math.max(0, Math.round(Number(body.seed)))
-          : null,
-      },
+    const result = await callFrameFlowBackend('/v1/creative/analyze-sketch', {
+      payload: { image_base64: imageBase64, style_hint: body.styleHint || null },
     });
-
-    return sendImage(res, {
-      imageBase64: result.image_base64,
-      mimeType: result.mime_type,
-      seed: result.seed,
-      finishReason: result.finish_reason,
-      modelId: result.model_id,
-    });
+    await recordUsageEvent(getSupabaseAdmin(), {
+      userId: user.id,
+      eventType: 'creative_sketch_analysis_included',
+      resourceType: 'included_ai_assist',
+      quantity: 1,
+      processingSeconds: (Date.now() - startedAt) / 1000,
+      visionCallCount: 1,
+      modelId: result.model_id || null,
+      provider: result.provider || 'amazon-bedrock',
+      metadata: { style_hint: body.styleHint || null, billed_credits: 0 },
+    }).catch(() => null);
+    return sendJson(res, 200, { ...result, creditCost: 0, included: true });
   } catch (error) {
-    const fallback = action === 'analyze'
-      ? 'Failed to analyze sketch with Amazon Nova'
-      : action === 'status'
-        ? 'Unable to verify Amazon Bedrock Stability Image Services'
-        : 'Failed to generate sketch concept with Stability AI on Amazon Bedrock';
-    return handleApiError(res, error, fallback);
+    return handleApiError(res, error, action === 'analyze' ? 'Failed to analyze sketch with Amazon Nova' : 'Creative generation request failed');
   }
 }

@@ -14,6 +14,17 @@ import {
   sendJson,
   uploadBase64Asset,
 } from '../../server/colorization-shared.js';
+import {
+  COST_RATES,
+  RESOURCE_TYPES,
+  consumeUsage,
+  estimateUsageCostUsd,
+  enforceApiRateLimit,
+  ensureProjectOwnership,
+  recordUsageEvent,
+  releaseUsage,
+  requireUser,
+} from '../../server/account-shared.js';
 
 async function findNextPendingJobFrame(supabase, job, nextIndex) {
   const processingFrameIds = Array.isArray(job.settings?.processing_frame_ids)
@@ -126,26 +137,57 @@ async function resolveReferenceFrame(supabase, job, targetJobFrame) {
   return originalReference;
 }
 
-async function completeJob(supabase, jobId) {
+async function completeJob(supabase, job) {
   const { data, error } = await supabase
     .from('colorization_jobs')
     .update({
       status: JOB_STATUS.COMPLETED,
       current_review_frame_id: null,
+      error_message: null,
     })
-    .eq('id', jobId)
+    .eq('id', job.id)
+    .in('status', [JOB_STATUS.CREATED, JOB_STATUS.RUNNING])
     .select('*')
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) {
+    const conflict = new Error('The colorization job changed state before completion.');
+    conflict.statusCode = 409;
+    conflict.preserveJob = true;
+    throw conflict;
+  }
+  if (job.usage_reservation_id) {
+    await releaseUsage(supabase, job.usage_reservation_id);
+  }
+  await supabase
+    .from('projects')
+    .update({ status: 'completed', updated_at: new Date().toISOString() })
+    .eq('id', job.project_id);
   return data;
 }
 
-async function processOneFrame({ supabase, projectId, job }) {
-  const nextFrame = await findNextPendingJobFrame(supabase, job, job.next_frame_index);
+async function processOneFrame({ supabase, projectId, job, userId }) {
+  const startedAt = Date.now();
+  const { data: activeProcessing, error: activeProcessingError } = await supabase
+    .from('colorization_job_frames')
+    .select('id')
+    .eq('job_id', job.id)
+    .eq('pipeline_status', FRAME_PIPELINE_STATUS.PROCESSING)
+    .limit(1)
+    .maybeSingle();
+  if (activeProcessingError) throw activeProcessingError;
+  if (activeProcessing) {
+    const busy = new Error('Another request is already processing the current frame.');
+    busy.statusCode = 409;
+    busy.preserveJob = true;
+    throw busy;
+  }
+
+  let nextFrame = await findNextPendingJobFrame(supabase, job, job.next_frame_index);
 
   if (!nextFrame) {
-    const completedJob = await completeJob(supabase, job.id);
+    const completedJob = await completeJob(supabase, job);
     return {
       kind: 'completed',
       status: JOB_STATUS.COMPLETED,
@@ -168,10 +210,19 @@ async function processOneFrame({ supabase, projectId, job }) {
   if (!referenceLineUrl) throw new Error('Reference frame has no source_image_url.');
   if (!referenceColorUrl) throw new Error('Reference frame has no colored_image_url. Save/import the colored keyframe first.');
 
-  await supabase
-    .from('colorization_job_frames')
-    .update({ pipeline_status: FRAME_PIPELINE_STATUS.PROCESSING })
-    .eq('id', nextFrame.id);
+  const orderCursor = nextFrame._order_cursor;
+  const { data: claimedFrame, error: claimError } = await supabase.rpc('claim_frameflow_colorization_frame', {
+    p_job_id: job.id,
+    p_job_frame_id: nextFrame.id,
+  });
+  if (claimError) throw claimError;
+  if (!claimedFrame) {
+    const busy = new Error('The next frame was already claimed or the job is no longer active.');
+    busy.statusCode = 409;
+    busy.preserveJob = true;
+    throw busy;
+  }
+  nextFrame = { ...claimedFrame, _order_cursor: orderCursor };
 
   const roleMemory = await getRoleMemory(supabase, projectId);
 
@@ -303,10 +354,48 @@ async function processOneFrame({ supabase, projectId, job }) {
     .from('colorization_jobs')
     .update(jobUpdate)
     .eq('id', job.id)
+    .in('status', [JOB_STATUS.CREATED, JOB_STATUS.RUNNING])
     .select('*')
-    .single();
+    .maybeSingle();
 
   if (updateJobError) throw updateJobError;
+  if (!updatedJob) {
+    const conflict = new Error('The colorization job is no longer active.');
+    conflict.statusCode = 409;
+    conflict.preserveJob = true;
+    throw conflict;
+  }
+
+  if (job.usage_reservation_id) {
+    await consumeUsage(supabase, job.usage_reservation_id, 1);
+  }
+  const processingSeconds = (Date.now() - startedAt) / 1000;
+  const visionCallCount = Number(cv.vision_call_count || cv.debug?.vision_call_count || 0);
+  await recordUsageEvent(supabase, {
+    userId,
+    projectId,
+    jobId: job.id,
+    eventType: 'processing_frame_completed',
+    resourceType: RESOURCE_TYPES.PROCESSING_FRAMES,
+    quantity: 1,
+    processingSeconds,
+    visionCallCount,
+    modelId: cv.vision_model_id || cv.debug?.vision_model_id || null,
+    provider: 'frameflow_cv_service',
+    status: needsReview ? 'needs_review' : 'completed',
+    estimatedCostUsd: estimateUsageCostUsd({
+      processingSeconds,
+      visionCallCount,
+      computeCostPerSecondUsd: COST_RATES.cvComputePerSecondUsd,
+    }),
+    metadata: {
+      frame_id: frameRecord.id,
+      frame_index: nextFrame.frame_index,
+      confidence_score: cv.confidence_score,
+      low_confidence_count: cv.low_confidence_count,
+      reference_frame_id: referenceFrame.id,
+    },
+  });
 
   return {
     kind: needsReview ? 'needs_review' : 'colorized',
@@ -328,18 +417,34 @@ async function processOneFrame({ supabase, projectId, job }) {
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['POST'])) return;
 
+  const supabase = getSupabaseAdmin();
+  let user = null;
+  let job = null;
+  let projectId = null;
+
   try {
+    user = await requireUser(req);
+    await enforceApiRateLimit(supabase, { key: `colorization:continue:${user.id}`, limit: 120, windowSeconds: 60 });
     const body = await readJsonBody(req);
-    const projectId = body.projectId || body.project_id;
+    projectId = body.projectId || body.project_id;
     const jobId = body.jobId || body.job_id || null;
     const maxSteps = Math.max(1, Math.min(Number(body.maxSteps ?? body.max_steps ?? 8), 20));
 
     if (!projectId) return sendError(res, 400, 'projectId is required');
-
-    const supabase = getSupabaseAdmin();
-    let job = await getLatestJob(supabase, projectId, jobId);
-
+    await ensureProjectOwnership(supabase, user.id, projectId);
+    job = await getLatestJob(supabase, projectId, jobId);
     if (!job) return sendError(res, 404, 'No colorization job found for this project');
+    if (job.user_id && job.user_id !== user.id) return sendError(res, 403, 'Colorization job access denied');
+
+    if (job.status === JOB_STATUS.FAILED) {
+      return sendError(res, 409, 'This colorization job failed. Start a new job to retry.', job.error_message || null);
+    }
+    if (job.status === JOB_STATUS.CANCELLED) {
+      return sendError(res, 409, 'This colorization job was cancelled. Start a new job to continue.');
+    }
+    if (job.status === JOB_STATUS.COMPLETED) {
+      return sendJson(res, 200, { ok: true, status: JOB_STATUS.COMPLETED, job, processed_count: 0, processed: [], message: 'Colorization job is already complete.' });
+    }
 
     if (job.current_review_frame_id) {
       return sendJson(res, 200, {
@@ -353,12 +458,10 @@ export default async function handler(req, res) {
 
     const processed = [];
     let last = null;
-
     for (let i = 0; i < maxSteps; i += 1) {
-      last = await processOneFrame({ supabase, projectId, job });
+      last = await processOneFrame({ supabase, projectId, job, userId: user.id });
       processed.push(last);
       job = last.job;
-
       if (last.kind === 'needs_review' || last.kind === 'completed') break;
     }
 
@@ -370,11 +473,40 @@ export default async function handler(req, res) {
       frame_id: last?.frame_id,
       result_url: last?.result_url,
       overlay_url: last?.overlay_url,
-      processed_count: processed.filter((item) => item.kind === 'colorized').length,
+      processed_count: processed.filter((item) => item.kind === 'colorized' || item.kind === 'needs_review').length,
       processed,
       message: last?.message || 'Colorization continued.',
     });
   } catch (error) {
-    return sendError(res, 500, 'Failed to continue colorization job', String(error?.message || error));
+    if (job?.id && !error?.preserveJob) {
+      await Promise.all([
+        supabase
+          .from('colorization_jobs')
+          .update({ status: JOB_STATUS.FAILED, error_message: error?.message || String(error) })
+          .eq('id', job.id),
+        supabase
+          .from('colorization_job_frames')
+          .update({ pipeline_status: FRAME_PIPELINE_STATUS.FAILED })
+          .eq('job_id', job.id)
+          .eq('pipeline_status', FRAME_PIPELINE_STATUS.PROCESSING),
+        supabase
+          .from('projects')
+          .update({ status: 'failed', updated_at: new Date().toISOString() })
+          .eq('id', projectId),
+      ]).catch(() => null);
+      if (job.usage_reservation_id) await releaseUsage(supabase, job.usage_reservation_id).catch(() => null);
+    }
+    if (user && projectId && !error?.preserveJob) {
+      await recordUsageEvent(supabase, {
+        userId: user.id,
+        projectId,
+        jobId: job?.id || null,
+        eventType: 'colorization_job_failed',
+        resourceType: RESOURCE_TYPES.PROCESSING_FRAMES,
+        status: 'failed',
+        metadata: { error: error?.message || String(error) },
+      });
+    }
+    return sendError(res, Number(error?.statusCode) || 500, 'Failed to continue colorization job', error?.details || error?.message || String(error));
   }
 }

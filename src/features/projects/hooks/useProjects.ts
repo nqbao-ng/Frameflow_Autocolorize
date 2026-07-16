@@ -1,22 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
+import { useEntitlements } from "@/features/account/hooks/useEntitlements";
 import type { Project } from "../types";
-import {
-  fetchProjects,
-  createProject,
-  updateProject,
-  deleteProject,
-} from "../services/projects.api";
+import { fetchProjects, createProject, updateProject, deleteProject } from "../services/projects.api";
 
 export function useProjects() {
   const navigate = useNavigate();
-
-  // ── Remote state ───────────────────────────────────────────────────────────
+  const { entitlements, loading: entitlementsLoading, error: entitlementsError, refresh: refreshEntitlements } = useEntitlements();
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // ── UI state ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -27,62 +20,51 @@ export function useProjects() {
   const [renameInputValue, setRenameInputValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
 
-  // ── Derived ────────────────────────────────────────────────────────────────
-  const filtered = projects.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = projects.filter((project) => project.name.toLowerCase().includes(search.toLowerCase()));
+  const projectLimit = entitlements?.limits.projects ?? null;
+  const canCreateProject = projectLimit == null || projects.length < projectLimit;
 
-  // ── Load on mount ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const res = await fetchProjects();
-        if (!cancelled) setProjects(res.data);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
+  const load = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await fetchProjects();
+      setProjects(response.data);
+    } catch (loadError) {
+      setError((loadError as Error).message);
+    } finally {
+      setIsLoading(false);
     }
-    load();
-    return () => { cancelled = true; };
   }, []);
 
-  // ── Create ─────────────────────────────────────────────────────────────────
+  useEffect(() => { void load(); }, [load]);
+
   const handleCreateProject = useCallback(async () => {
-    if (!newProjectName.trim()) return;
+    if (!newProjectName.trim() || !canCreateProject) return;
     try {
       setError(null);
       setIsCreating(true);
       const created = await createProject({ name: newProjectName.trim() });
-      setProjects((prev) => [created, ...prev]);
+      setProjects((current) => [created, ...current]);
       setNewProjectName("");
       setShowNewModal(false);
-      setError(null);
-      // navigate("/dashboard");
-      navigate(
-          `/dashboard/${created.id}`,
-        );
-    } catch (err) {
-      setError((err as Error).message);
+      await refreshEntitlements(true);
+      navigate(`/dashboard/${created.id}`);
+    } catch (createError) {
+      setError((createError as Error).message);
     } finally {
       setIsCreating(false);
     }
-  }, [newProjectName, navigate]);
+  }, [newProjectName, canCreateProject, navigate, refreshEntitlements]);
 
-  // ── Rename ─────────────────────────────────────────────────────────────────
   const handleRename = useCallback(async (id: string, name: string) => {
     try {
       setError(null);
       setIsRenaming(true);
       const updated = await updateProject(id, { name });
-      setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
+      setProjects((current) => current.map((project) => project.id === id ? updated : project));
+    } catch (renameError) {
+      setError((renameError as Error).message);
     } finally {
       setIsRenaming(false);
       setOpenMenuId(null);
@@ -91,85 +73,32 @@ export function useProjects() {
     }
   }, []);
 
-  const openRenameModal = (id: string, currentName: string) => {
-    setRenameModalId(id);
-    setRenameInputValue(currentName);
-  };
-
-  const closeRenameModal = () => {
-    setRenameModalId(null);
-    setRenameInputValue("");
-  };
-
-  const submitRename = async () => {
-    if (!renameInputValue.trim() || !renameModalId) return;
-    await handleRename(renameModalId, renameInputValue.trim());
-  };
-
-  // ── Delete ─────────────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
     try {
       setError(null);
       setDeletingId(id);
       await deleteProject(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
+      setProjects((current) => current.filter((project) => project.id !== id));
+      await refreshEntitlements(true);
+    } catch (deleteError) {
+      setError((deleteError as Error).message);
     } finally {
       setDeletingId(null);
       setOpenMenuId(null);
     }
-  }, []);
-
-  // ── Modal helpers ──────────────────────────────────────────────────────────
-  const openNewModal = () => {
-    setNewProjectName("");
-    setShowNewModal(true);
-  };
-  const closeNewModal = () => {
-    setNewProjectName("");
-    setShowNewModal(false);
-  };
+  }, [refreshEntitlements]);
 
   return {
-    // Data
-    projects,
-    filtered,
-    isLoading,
-    error,
-
-    // Search
-    search,
-    setSearch,
-
-    // Menu
-    openMenuId,
-    setOpenMenuId,
-
-    // Modal
-    showNewModal,
-    newProjectName,
-    setNewProjectName,
-    isCreating,
-    openNewModal,
-    closeNewModal,
-
-    // Rename Modal
-    renameModalId,
-    renameInputValue,
-    setRenameInputValue,
-    isRenaming,
-    openRenameModal,
-    closeRenameModal,
-    submitRename,
-
-    // Async states
-    deletingId,
-
-    // Handlers
-    handleCreateProject,
-    handleRename,
-    handleDelete,
+    projects, filtered, isLoading, error: error || entitlementsError,
+    entitlements, entitlementsLoading, canCreateProject, projectLimit,
+    search, setSearch, openMenuId, setOpenMenuId,
+    showNewModal, newProjectName, setNewProjectName, isCreating,
+    openNewModal: () => { if (canCreateProject) { setNewProjectName(""); setShowNewModal(true); } },
+    closeNewModal: () => { setNewProjectName(""); setShowNewModal(false); },
+    renameModalId, renameInputValue, setRenameInputValue, isRenaming,
+    openRenameModal: (id: string, name: string) => { setRenameModalId(id); setRenameInputValue(name); },
+    closeRenameModal: () => { setRenameModalId(null); setRenameInputValue(""); },
+    submitRename: async () => { if (renameModalId && renameInputValue.trim()) await handleRename(renameModalId, renameInputValue.trim()); },
+    deletingId, handleCreateProject, handleRename, handleDelete, reload: load,
   };
 }

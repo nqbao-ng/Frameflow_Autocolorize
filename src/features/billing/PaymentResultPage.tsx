@@ -68,7 +68,7 @@ export function PaymentResultPage() {
       return {
         icon: <CheckCircle2 size={54} color="#10B981" />,
         title: "Payment confirmed",
-        message: "Your FrameFlow plan is active and the included credits have been added to your account.",
+        message: "Your FrameFlow plan is active and your new usage period is ready.",
         tone: "#ECFDF5",
         border: "#A7F3D0",
       };

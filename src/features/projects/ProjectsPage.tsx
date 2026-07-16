@@ -7,6 +7,7 @@ import { NewProjectModal } from "./components/NewProjectModal";
 import { RenameModal } from "./components/RenameModal";
 import { SearchSuggestions } from "./components/SearchSuggestions";
 import { useProjects } from "./hooks/useProjects";
+import { UsageCard } from "@/features/account/components/UsageCard";
 
 function getRelativeTime(dateString: string): string {
   try {
@@ -37,11 +38,12 @@ export function ProjectsPage() {
     handleCreateProject, handleRename, handleDelete,
     renameModalId, renameInputValue, setRenameInputValue, isRenaming,
     openRenameModal, closeRenameModal, submitRename,
+    entitlements, entitlementsLoading, canCreateProject, projectLimit,
   } = ctx;
 
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest");
-  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "in-progress" | "complete">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "draft" | "ready" | "processing" | "needs-review" | "complete" | "failed">("all");
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const filteredWithStatus = filtered.filter(p => 
@@ -128,6 +130,12 @@ export function ProjectsPage() {
           </div>
         </div>
 
+        {!entitlementsLoading && entitlements && (
+          <div style={{ marginBottom: 30 }}>
+            <UsageCard entitlements={entitlements} />
+          </div>
+        )}
+
         {/* Project Statistics - Compact Inline */}
         {!isLoading && projects.length > 0 && (
           <div style={{ display: "flex", gap: 20, marginBottom: 32, flexWrap: "wrap", alignItems: "center" }}>
@@ -212,8 +220,11 @@ export function ProjectsPage() {
           >
             <option value="all">All Status</option>
             <option value="draft">Draft</option>
-            <option value="in-progress">In Progress</option>
+            <option value="ready">Ready</option>
+            <option value="processing">Processing</option>
+            <option value="needs-review">Needs review</option>
             <option value="complete">Completed</option>
+            <option value="failed">Failed</option>
           </select>
 
           {/* Sort Dropdown */}
@@ -250,14 +261,15 @@ export function ProjectsPage() {
             <p style={{ fontSize: 14, color: "#AAB2D5", marginTop: 8, marginBottom: 24 }}>Import your first manga page to start coloring</p>
             <button
               onClick={openNewModal}
+              disabled={!canCreateProject}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 8, padding: "12px 28px",
                 borderRadius: 12, border: "none", background: "linear-gradient(135deg, #7C3AED 0%, #A855F7 25%, #FF2E9A 75%, #FF8A34 100%)", color: "white",
-                fontWeight: 700, fontSize: 14, cursor: "pointer",
+                fontWeight: 700, fontSize: 14, cursor: canCreateProject ? "pointer" : "not-allowed", opacity: canCreateProject ? 1 : .65,
                 boxShadow: "0 8px 30px rgba(168,85,247,0.35)", fontFamily: "'Inter', sans-serif",
               }}
             >
-              <Plus size={16} />Create First Project
+              <Plus size={16} />{canCreateProject ? "Create First Project" : "Project limit reached"}
             </button>
           </div>
         )}
@@ -268,7 +280,7 @@ export function ProjectsPage() {
             style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}
             onClick={() => setOpenMenuId(null)}
           >
-            <NewProjectCard onClick={openNewModal} />
+            <NewProjectCard onClick={openNewModal} disabled={!canCreateProject} limitMessage={`You are using ${projects.length} of ${projectLimit ?? "unlimited"} active projects. Upgrade or delete a project to continue.`} />
 
             {sortedProjects.map((project) => {
               const realFrameCount = project.frames || 0;

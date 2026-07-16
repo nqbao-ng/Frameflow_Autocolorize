@@ -5,62 +5,26 @@ import { fetchBillingPlans, formatVnd, type BillingPlan } from "@/features/billi
 
 const FALLBACK_PLANS: BillingPlan[] = [
   {
-    code: "free",
-    name: "Free",
-    description: "For trying the core FrameFlow workflow",
-    priceVnd: 0,
-    durationDays: 0,
-    creditsGrant: 0,
-    projectLimit: 5,
-    creativeDailyLimit: 10,
-    creativeConcurrentLimit: 1,
-    sortOrder: 10,
-    features: ["5 projects", "Standard processing", "10 Creative Studio jobs/day", "PNG and ZIP export"],
+    code: "free", name: "Free", description: "Keep creating after your Pro trial ends.", priceVnd: 0,
+    durationDays: 30, creditsGrant: 5, projectLimit: 2, processingFrameLimit: 50,
+    creativeCreditLimit: 5, creativeDailyLimit: 3, creativeConcurrentLimit: 1, trialDays: 0,
+    priorityQueue: false, highQualityExport: false, versionHistoryDays: 3, sortOrder: 10,
+    features: ["3-day Pro trial for new accounts", "2 active projects", "50 Processing Frames/month", "5 Creative Credits/month", "Manual correction and standard export"],
   },
   {
-    code: "pro",
-    name: "Pro",
-    description: "For individual artists and frequent animation work",
-    priceVnd: 499000,
-    durationDays: 30,
-    creditsGrant: 500,
-    projectLimit: 50,
-    creativeDailyLimit: 40,
-    creativeConcurrentLimit: 2,
-    sortOrder: 20,
-    features: ["50 projects", "Faster processing", "40 Creative Studio jobs/day", "500 bonus credits"],
-  },
-  {
-    code: "studio",
-    name: "Studio",
-    description: "For small teams and production workloads",
-    priceVnd: 249000,
-    durationDays: 30,
-    creditsGrant: 1500,
-    projectLimit: null,
-    creativeDailyLimit: 120,
-    creativeConcurrentLimit: 4,
-    sortOrder: 30,
-    features: ["Unlimited projects", "Highest processing limits", "120 Creative Studio jobs/day", "1,500 bonus credits"],
+    code: "pro", name: "Pro Beta", description: "For individual artists producing frame sequences regularly.", priceVnd: 499000,
+    durationDays: 30, creditsGrant: 200, projectLimit: 50, processingFrameLimit: 1000,
+    creativeCreditLimit: 200, creativeDailyLimit: 40, creativeConcurrentLimit: 2, trialDays: 0,
+    priorityQueue: true, highQualityExport: true, versionHistoryDays: 30, sortOrder: 20,
+    features: ["50 active projects", "1,000 Processing Frames/month", "200 Creative Credits/month", "2 concurrent Creative jobs", "Priority processing and high-quality export"],
   },
 ];
 
 export function PricingSection() {
   const [plans, setPlans] = useState<BillingPlan[]>(FALLBACK_PLANS);
-
   useEffect(() => {
     let cancelled = false;
-    fetchBillingPlans()
-      .then((remotePlans) => {
-        if (!cancelled && remotePlans.length) {
-          setPlans(remotePlans.map((plan) => (
-            plan.code === "pro" ? { ...plan, priceVnd: 499000 } : plan
-          )));
-        }
-      })
-      .catch(() => {
-        // Keep build-time fallback when billing has not been deployed yet.
-      });
+    fetchBillingPlans().then((remote) => { if (!cancelled && remote.length) setPlans(remote); }).catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
 
@@ -68,45 +32,24 @@ export function PricingSection() {
     <section id="pricing" className="landing-section landing-pricing-section">
       <div className="landing-section-heading">
         <div className="landing-section-eyebrow">PRICING</div>
-        <h2>Simple, transparent pricing</h2>
-        <p>Start free, then upgrade to Pro monthly with payOS and VietQR. Paid plans do not auto-renew.</p>
+        <h2>Start with the full workflow</h2>
+        <p>New accounts receive a 3-day Pro trial. After that, continue on Free or upgrade securely with payOS.</p>
       </div>
-
       <div className="landing-pricing-grid">
         {plans.map((plan) => {
-          const isFree = plan.priceVnd === 0;
-          const isPro = plan.code === "pro";
-          const isStudio = plan.code === "studio";
+          const free = plan.priceVnd === 0;
+          const pro = plan.code === "pro";
           return (
-            <article key={plan.code} className={`landing-pricing-card ${isPro ? "landing-pricing-card-pro" : ""}`}>
-              {isPro && <div className="landing-pricing-badge">MOST POPULAR</div>}
-              <div className={`landing-pricing-plan ${isPro ? "landing-pricing-plan-pro" : ""}`}>{plan.name} Plan</div>
-              <div className="landing-pricing-price">
-                <strong>{isStudio ? "Coming Soon" : formatVnd(plan.priceVnd)}</strong>
-                <span>{isFree ? "forever" : isPro ? "/month" : ""}</span>
+            <article key={plan.code} className={`landing-pricing-card ${pro ? "landing-pricing-card-pro" : ""}`}>
+              {pro && <div className="landing-pricing-badge">PRO BETA</div>}
+              <div className={`landing-pricing-plan ${pro ? "landing-pricing-plan-pro" : ""}`}>{plan.name}</div>
+              <div className="landing-pricing-price"><strong>{formatVnd(plan.priceVnd)}</strong><span>{free ? "forever" : "/month"}</span></div>
+              <div className={`landing-pricing-features ${pro ? "landing-pricing-features-pro" : ""}`}>
+                {plan.features.map((feature) => <div key={feature}><Check size={16} /><span>{feature}</span></div>)}
               </div>
-              <div className={`landing-pricing-features ${isPro ? "landing-pricing-features-pro" : ""}`}>
-                {plan.features.map((feature) => (
-                  <div key={feature}><Check size={16} /> <span>{feature}</span></div>
-                ))}
-              </div>
-              {isStudio ? (
-                <button
-                  type="button"
-                  disabled
-                  className="landing-pricing-button landing-pricing-button-secondary"
-                  style={{ cursor: "not-allowed", opacity: 0.65 }}
-                >
-                  Coming Soon
-                </button>
-              ) : (
-                <Link
-                  to={isFree ? "/signup" : `/settings?tab=billing&plan=${plan.code}`}
-                  className={`landing-pricing-button ${isPro ? "landing-pricing-button-primary" : "landing-pricing-button-secondary"}`}
-                >
-                  {isFree ? "Get Started Free" : `Choose ${plan.name}`} {!isFree && <ArrowRight size={16} />}
-                </Link>
-              )}
+              <Link to={free ? "/signup" : `/settings?tab=billing&plan=${plan.code}`} className={`landing-pricing-button ${pro ? "landing-pricing-button-primary" : "landing-pricing-button-secondary"}`}>
+                {free ? "Start 3-day Pro Trial" : "Choose Pro"} {!free && <ArrowRight size={16} />}
+              </Link>
             </article>
           );
         })}

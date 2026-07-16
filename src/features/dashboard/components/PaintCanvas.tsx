@@ -848,7 +848,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
        />
       {/* Layer 2 — editable AI/manual color layer + event receiver */}
       <canvas
-        ref={canvasRef}
+        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
         style={{
           position: "absolute",
           inset: 0,

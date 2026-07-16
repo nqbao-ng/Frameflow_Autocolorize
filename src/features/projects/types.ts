@@ -1,4 +1,10 @@
-export type ProjectStatus = "in-progress" | "complete" | "draft";
+export type ProjectStatus =
+  | "draft"
+  | "ready"
+  | "processing"
+  | "needs-review"
+  | "complete"
+  | "failed";
 
 export interface Project {
   id: string;
@@ -8,9 +14,9 @@ export interface Project {
   status: ProjectStatus;
   lastEdited: string;
   thumbnail: string;
+  currentReviewFrameId?: string | null;
+  errorMessage?: string | null;
 }
-
-// ── API shapes (dùng khi connect backend) ────────────────────────────────────
 
 export interface CreateProjectPayload {
   name: string;
@@ -18,7 +24,7 @@ export interface CreateProjectPayload {
 
 export interface UpdateProjectPayload {
   name?: string;
-  status?: ProjectStatus;
+  archived?: boolean;
 }
 
 export interface ProjectsApiResponse {

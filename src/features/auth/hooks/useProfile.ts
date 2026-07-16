@@ -25,7 +25,7 @@ interface UseProfileReturn {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
-  updateProfile: (updates: Partial<UserProfile>) => Promise<boolean>;
+  updateProfile: (updates: Pick<Partial<UserProfile>, "full_name" | "avatar_url">) => Promise<boolean>;
 }
 
 /**
@@ -80,7 +80,7 @@ export function useProfile(userId: string | null): UseProfileReturn {
 
   // Update profile
   const updateProfile = useCallback(
-    async (updates: Partial<UserProfile>): Promise<boolean> => {
+    async (updates: Pick<Partial<UserProfile>, "full_name" | "avatar_url">): Promise<boolean> => {
       if (!userId) {
         setError('User ID is required to update profile');
         return false;

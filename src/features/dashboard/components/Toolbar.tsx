@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import type { useDashboard } from "../hooks/useDashboard";
 import { ExportModal } from "./ExportModal";
+import { useEntitlements } from "@/features/account/hooks/useEntitlements";
 
 type DashboardCtx = ReturnType<typeof useDashboard>;
 
@@ -51,11 +52,14 @@ const divider: React.CSSProperties = {
 
 export function Toolbar({ ctx, projectName }: ToolbarProps) {
   const { projectId } = useParams();
+  const { entitlements } = useEntitlements();
   const {
     activeFrame,
     undoStack,
     redoStack,
     isColoring,
+    colorizationProgress,
+    frameReview,
     handleAutoColor,
     handleUndo,
     handleRedo,
@@ -71,6 +75,24 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
   const canRedo = (redoStack[activeFrame]?.length ?? 0) > 0;
 
   const [showExportModal, setShowExportModal] = useState(false);
+  const processingRemaining = entitlements?.usage.processingFramesRemaining ?? null;
+  const sequenceStatus = frameReview?.job?.status || "";
+  const isResumable = ["created", "running"].includes(sequenceStatus);
+  const reviewRequired = sequenceStatus === "waiting_review";
+  const canProcess =
+    isResumable ||
+    reviewRequired ||
+    processingRemaining == null ||
+    processingRemaining > 0;
+  const autoColorLabel = isColoring
+    ? colorizationProgress
+      ? `Coloring ${colorizationProgress.processed}/${colorizationProgress.total}`
+      : "Coloring…"
+    : isResumable
+      ? "Resume Sequence"
+      : reviewRequired
+        ? "Review Required"
+        : "Auto Color Sequence";
 
   const activeFrameData = uncoloredFiles[activeFrame];
   const activeCreativeSource =
@@ -153,9 +175,19 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
 
          <div style={divider} />
 
-        {/* AI Auto Color */}
+        {/* Sequence processing */}
         <button
           onClick={handleAutoColor}
+          disabled={isColoring || !canProcess}
+          title={
+            !canProcess
+              ? "Processing Frame quota reached"
+              : reviewRequired
+                ? "Open the frame that requires review before continuing"
+                : isResumable
+                  ? "Resume the current colorization sequence"
+                  : "Color selected following frames"
+          }
           style={{
             ...baseBtn,
             border: "none",
@@ -164,13 +196,21 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
             color: isColoring ? "#C084FC" : "white",
             fontWeight: 600,
             boxShadow: "0 3px 12px rgba(168,85,247,0.3)",
+            cursor: isColoring || !canProcess ? "not-allowed" : "pointer",
+            opacity: !canProcess ? .55 : 1,
           }}
         >
           {isColoring
             ? <RefreshCw size={11} className="animate-spin" />
             : <Sparkles size={11} />}
-          {isColoring ? "Coloring…" : "AI Auto Color"}
+          {autoColorLabel}
         </button>
+
+        {processingRemaining != null && (
+          <span style={{ fontSize: 9, color: processingRemaining > 0 ? "#8F96B3" : "#FB7185", margin: "0 3px" }}>
+            {processingRemaining} frames left
+          </span>
+        )}
 
         {/* Correction keyframe + propagate */}
         <button

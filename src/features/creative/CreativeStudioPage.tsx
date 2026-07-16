@@ -15,6 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { ProjectsHeader } from "@/features/projects/components/ProjectsHeader";
+import { useEntitlements } from "@/features/account/hooks/useEntitlements";
+import { UsageCard } from "@/features/account/components/UsageCard";
 import {
   analyzeSketch,
   getBedrockStabilityStatus,
@@ -311,6 +313,7 @@ function UploadPanel({
 
 export function CreativeStudioPage() {
   const location = useLocation();
+  const { entitlements, refresh: refreshEntitlements } = useEntitlements();
   const initialState = (location.state || {}) as LocationState;
   const [mode, setMode] = useState<StudioMode>(initialState.mode || "sketch");
   const [source, setSource] = useState<string | null>(initialState.sourceImage || null);
@@ -346,6 +349,9 @@ export function CreativeStudioPage() {
   const isGenerating = activeJob?.status === "queued" || activeJob?.status === "processing";
   const isBusy = isSubmitting || isGenerating || isAnalyzing;
   const generationProgress = activeJob?.progress ?? 0;
+  const creditCost = mode === "sketch" ? (entitlements?.creativeCosts.sketch ?? 15) : (entitlements?.creativeCosts.outpaint ?? 20);
+  const creditsRemaining = entitlements?.usage.creativeCreditsRemaining ?? 0;
+  const hasEnoughCredits = Boolean(entitlements && creditsRemaining >= creditCost);
 
   useEffect(() => {
     sourceRef.current = source;
@@ -393,6 +399,7 @@ export function CreativeStudioPage() {
         const response = await getCreativeJob(stored.jobId);
         if (cancelled) return;
         setActiveJob(response.job);
+      void refreshEntitlements(true);
         setMode(response.job.jobType);
         if (response.job.status === "completed" && response.job.resultUrl) {
           setResult(response.job.resultUrl);
@@ -426,6 +433,7 @@ export function CreativeStudioPage() {
         if (next.status === "completed" && next.resultUrl) {
           setResult(next.resultUrl);
           setError(null);
+          void refreshEntitlements(true);
           return;
         }
         if (next.status === "failed") {
@@ -434,7 +442,8 @@ export function CreativeStudioPage() {
           return;
         }
         if (next.status === "cancelled") {
-          setError("Generation cancelled.");
+          setError("Generation cancelled. Reserved credits were returned.");
+      void refreshEntitlements(true);
           window.localStorage.removeItem(activeJobStorageKey);
           return;
         }
@@ -451,7 +460,7 @@ export function CreativeStudioPage() {
       cancelled = true;
       if (timeoutId !== null) window.clearTimeout(timeoutId);
     };
-  }, [activeJob?.id, activeJob?.status]);
+  }, [activeJob?.id, activeJob?.status, refreshEntitlements]);
 
   useEffect(() => {
     if (!source) {
@@ -560,6 +569,10 @@ export function CreativeStudioPage() {
       setError("Upload an image first.");
       return;
     }
+    if (!hasEnoughCredits) {
+      setError(`This action requires ${creditCost} Creative Credits. You currently have ${creditsRemaining}.`);
+      return;
+    }
 
     setIsSubmitting(true);
     setError(null);
@@ -608,7 +621,8 @@ export function CreativeStudioPage() {
       const response = await cancelCreativeJob(activeJob.id);
       setActiveJob(response.job);
       window.localStorage.removeItem(activeJobStorageKey);
-      setError("Generation cancelled.");
+      setError("Generation cancelled. Reserved credits were returned.");
+      void refreshEntitlements(true);
     } catch (cancelError) {
       setError((cancelError as Error).message || "Unable to cancel generation.");
     }
@@ -631,6 +645,7 @@ export function CreativeStudioPage() {
       <ProjectsHeader />
 
       <main className="creative-shell">
+        {entitlements && <div style={{ marginBottom: 22 }}><UsageCard entitlements={entitlements} /></div>}
         <section className="creative-hero">
           <div>
             <span className="creative-kicker"><WandSparkles size={15} /> AI Creative Studio</span>
@@ -760,7 +775,11 @@ export function CreativeStudioPage() {
 
             {error && <div className="creative-error">{error}</div>}
 
-            <button className="creative-generate-button" onClick={handleGenerate} disabled={isBusy || !source || apiStatus === "missing"}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, margin: "12px 0 8px", fontSize: 12, color: "#AAB2D5" }}>
+              <span>{mode === "sketch" ? "Generate Artwork" : "Expand Scene"}: <strong style={{ color: "#F5F3FF" }}>{creditCost} Creative Credits</strong></span>
+              <span>Available: <strong style={{ color: hasEnoughCredits ? "#4ADE80" : "#FB7185" }}>{creditsRemaining}</strong></span>
+            </div>
+            <button className="creative-generate-button" onClick={handleGenerate} disabled={isBusy || !source || apiStatus === "missing" || !hasEnoughCredits}>
               {isBusy ? <Loader2 size={19} className="creative-spin" /> : mode === "sketch" ? <Sparkles size={19} /> : <Expand size={19} />}
               {isSubmitting ? "Starting job…" : isGenerating ? `${activeJob?.status === "queued" ? "Queued" : "Generating"} · ${generationProgress}%` : isAnalyzing ? "Analyzing sketch…" : mode === "sketch" ? "Generate Artwork" : "Expand Scene"}
               {!isBusy && <ArrowRight size={18} />}

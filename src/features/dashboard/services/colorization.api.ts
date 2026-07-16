@@ -1,3 +1,6 @@
+import { supabase } from "@/lib/supabase";
+import { notifyEntitlementsChanged } from "@/features/account/services/entitlements.api";
+
 export type PipelineStatus =
   | "pending"
   | "processing"
@@ -64,6 +67,8 @@ export type ReviewState = {
   segments: ReviewSegment[];
   reason?: string | null;
   confidence_score?: number | null;
+  segment_analysis_available?: boolean;
+  segment_analysis_message?: string | null;
 };
 
 export type CorrectionItem = {
@@ -78,6 +83,11 @@ export type CorrectionItem = {
 const API_BASE = import.meta.env.VITE_BACKEND_API_BASE_URL || "";
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Your session has expired. Please sign in again.");
+
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 120000);
 
@@ -87,6 +97,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
         ...(init?.headers || {}),
       },
     });
@@ -125,7 +136,7 @@ export async function startColorizationJob(input: {
   overwriteExisting?: boolean;
   settings?: Record<string, unknown>;
 }) {
-  return requestJson<{
+  const result = await requestJson<{
     ok: boolean;
     job: ColorizationJob;
     reference_frame: Record<string, unknown>;
@@ -135,6 +146,8 @@ export async function startColorizationJob(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+  notifyEntitlementsChanged();
+  return result;
 }
 
 export async function getColorizationState(input: {
@@ -156,7 +169,7 @@ export async function continueColorizationJob(input: {
   jobId?: string | null;
   maxSteps?: number;
 }) {
-  return requestJson<{
+  const result = await requestJson<{
     ok: boolean;
     status: string;
     job: ColorizationJob;
@@ -171,6 +184,25 @@ export async function continueColorizationJob(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+  notifyEntitlementsChanged();
+  return result;
+}
+
+export async function cancelColorizationJob(input: {
+  projectId: string;
+  jobId?: string | null;
+}) {
+  const result = await requestJson<{
+    ok: boolean;
+    job: ColorizationJob;
+    released: boolean;
+    message: string;
+  }>("/api/colorization/cancel", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  notifyEntitlementsChanged();
+  return result;
 }
 
 export async function getFrameReviewState(input: {

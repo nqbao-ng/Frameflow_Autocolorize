@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import type { SketchAnalysisResponse } from "./stability.api";
+import { notifyEntitlementsChanged } from "@/features/account/services/entitlements.api";
 
 export type CreativeJobStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
 
@@ -21,6 +22,7 @@ export type CreativeJob = {
   startedAt?: string | null;
   completedAt?: string | null;
   metadata?: Record<string, unknown>;
+  creditCost?: number;
 };
 
 async function getAccessToken() {
@@ -80,11 +82,13 @@ export async function createCreativeJob(input: {
   frameId?: string | null;
   analysis?: SketchAnalysisResponse | null;
 }) {
-  return requestJson<{ ok: true; job: CreativeJob }>("/api/creative/jobs", {
+  const response = await requestJson<{ ok: true; job: CreativeJob; creditCost?: number }>("/api/creative/jobs", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   }, 40000);
+  notifyEntitlementsChanged();
+  return response;
 }
 
 export async function getCreativeJob(jobId: string) {
@@ -100,7 +104,9 @@ export async function listCreativeJobs(limit = 12) {
 }
 
 export async function cancelCreativeJob(jobId: string) {
-  return requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/job?id=${encodeURIComponent(jobId)}`, {
+  const response = await requestJson<{ ok: true; job: CreativeJob }>(`/api/creative/job?id=${encodeURIComponent(jobId)}`, {
     method: "DELETE",
   }, 15000);
+  notifyEntitlementsChanged();
+  return response;
 }

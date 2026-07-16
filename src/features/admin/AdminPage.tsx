@@ -21,6 +21,7 @@ import {
   getTotalUserCount,
   getTotalCreditsDistributed,
   getActiveUsersThisMonth,
+  getOperationalMetrics,
   type AdminUser,
   type AuditLog,
 } from "./services/admin.api";
@@ -499,20 +500,21 @@ export function AdminPage() {
     const [totalUsers, setTotalUsers] = useState<number | null>(null);
     const [totalCredits, setTotalCredits] = useState<number | null>(null);
     const [activeUsers, setActiveUsers] = useState<number | null>(null);
+    const [processingFrames, setProcessingFrames] = useState<number | null>(null);
+    const [estimatedCostUsd, setEstimatedCostUsd] = useState<number | null>(null);
     const [statsLoading, setStatsLoading] = useState(true);
 
     useEffect(() => {
       const loadStats = async () => {
         setStatsLoading(true);
-        const [usersResult, creditsResult, activeResult] = await Promise.all([
-          getTotalUserCount(user.id),
-          getTotalCreditsDistributed(user.id),
-          getActiveUsersThisMonth(user.id),
-        ]);
-
-        if (usersResult.success) setTotalUsers(usersResult.data ?? 0);
-        if (creditsResult.success) setTotalCredits(creditsResult.data ?? 0);
-        if (activeResult.success) setActiveUsers(activeResult.data ?? 0);
+        const metricsResult = await getOperationalMetrics(user.id);
+        if (metricsResult.success && metricsResult.data) {
+          setTotalUsers(metricsResult.data.totalUsers);
+          setTotalCredits(metricsResult.data.totalCredits);
+          setActiveUsers(metricsResult.data.activeUsers);
+          setProcessingFrames(metricsResult.data.processingFrames);
+          setEstimatedCostUsd(metricsResult.data.estimatedCostUsd);
+        }
         setStatsLoading(false);
       };
       loadStats();
@@ -533,12 +535,12 @@ export function AdminPage() {
         </div>
         <div style={{ ...S.card, marginBottom: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
-            Total Credits Distributed
+            Available Creative Credits
           </div>
           <div style={{ fontSize: 28, fontWeight: 700, color: "#10B981" }}>
             {statsLoading ? "—" : totalCredits}
           </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Across all users</div>
+          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Current active usage periods</div>
         </div>
         <div style={{ ...S.card, marginBottom: 0 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
@@ -548,6 +550,15 @@ export function AdminPage() {
             {statsLoading ? "—" : activeUsers}
           </div>
           <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Last 30 days</div>
+        </div>
+        <div style={{ ...S.card, marginBottom: 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
+            30-day Processing Cost
+          </div>
+          <div style={{ fontSize: 25, fontWeight: 700, color: "#8B5CF6" }}>
+            {statsLoading ? "—" : `$${(estimatedCostUsd || 0).toFixed(2)}`}
+          </div>
+          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>{processingFrames || 0} metered frames</div>
         </div>
       </div>
     );

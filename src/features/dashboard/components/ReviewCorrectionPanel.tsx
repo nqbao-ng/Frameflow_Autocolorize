@@ -10,11 +10,13 @@ import {
   RefreshCw,
   ShieldCheck,
   Wand2,
+  XCircle,
 } from "lucide-react";
 import type { useDashboard } from "../hooks/useDashboard";
 import { ROLE_PRESETS } from "../constants/rolePresets";
 import {
   applyFrameCorrection,
+  cancelColorizationJob,
   continueColorizationJob,
   getVisionSuggestion,
   type ReviewSegment,
@@ -131,6 +133,10 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
   const currentNeedsReview = review?.has_review || review?.status === "needs_review_not_reference";
   const visibleReason = review?.reason?.trim() === "Lineart-preserving CV propagation completed." ? "" : review?.reason;
   const hasSegments = Boolean(review?.segments?.length);
+  useEffect(() => {
+    if (!currentNeedsReview) setApplyScope("segment_only");
+  }, [currentNeedsReview]);
+
 
   if (!currentNeedsReview && reviewFrameId && reviewFrameId !== currentFrame.id) {
     const reviewIndex = uncoloredFiles.findIndex((frame) => frame.id === reviewFrameId);
@@ -141,16 +147,45 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
             <Wand2 size={12} color="#F59E0B" />
             <span style={{ fontSize: 11, fontWeight: 800, color: "#F5F3FF" }}>Review Pending</span>
           </div>
-          <button
-            type="button"
-            onClick={() => reviewIndex >= 0 && handleFrameChange(reviewIndex)}
-            style={{ ...S.button, background: "rgba(245,158,11,0.12)", color: "#B45309", border: "1px solid rgba(245,158,11,0.35)" }}
-          >
-            Go to Frame {reviewIndex >= 0 ? reviewIndex + 1 : ""}
-          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => reviewIndex >= 0 && handleFrameChange(reviewIndex)}
+              style={{ ...S.button, background: "rgba(245,158,11,0.12)", color: "#FBBF24", border: "1px solid rgba(245,158,11,0.35)" }}
+            >
+              Go to Frame {reviewIndex >= 0 ? reviewIndex + 1 : ""}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelSequence}
+              disabled={loading}
+              title="Cancel sequence and return unused Processing Frames"
+              style={{ ...S.button, background: "rgba(244,63,94,0.12)", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
+            >
+              <XCircle size={11} /> Cancel
+            </button>
+          </div>
         </div>
       </div>
     );
+  }
+
+  async function handleCancelSequence() {
+    if (!review?.job?.id || !projectId) return;
+    if (!window.confirm("Cancel this colorization sequence? Unused Processing Frames will be returned.")) return;
+    try {
+      setLoading(true);
+      const result = await cancelColorizationJob({ projectId, jobId: review.job.id });
+      setSelectedSegmentId(null);
+      setSegmentPickMode(false);
+      await refreshFrames();
+      await loadFrameReview();
+      addToast(`✅ ${result.message}`, "success", 6000);
+    } catch (error) {
+      addToast(`❌ ${(error as Error).message}`, "error", 7000);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleSuggest() {
@@ -308,7 +343,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         </div>
         <div style={{ padding: "0 12px 12px" }}>
           <div style={{ fontSize: 10, color: "#AAB2D5", background: "#181827", border: "1px solid #2A2A40", borderRadius: 8, padding: 8, lineHeight: 1.45, marginBottom: 8 }}>
-            Sửa frame bằng Brush/Fill, sau đó dùng nút dưới để lưu frame hiện tại thành correction keyframe và recolor các frame phía sau.
+            {review?.segment_analysis_message || "Segment analysis is unavailable for this frame. Edit with Brush/Fill, then save it as a correction keyframe to continue the sequence."}
           </div>
           <button
             type="button"
@@ -317,6 +352,16 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           >
             <CheckCircle2 size={12} /> Correction Keyframe & Continue
           </button>
+          {currentNeedsReview && review?.job?.id && (
+            <button
+              type="button"
+              onClick={handleCancelSequence}
+              disabled={loading}
+              style={{ ...S.button, width: "100%", marginTop: 6, background: "rgba(244,63,94,0.12)", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
+            >
+              <XCircle size={11} /> Cancel sequence & return unused frames
+            </button>
+          )}
         </div>
       </div>
     );
@@ -517,6 +562,17 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           <CheckCircle2 size={12} />
           {applying ? "Applying..." : "Apply Correction & Continue"}
         </button>
+
+        {currentNeedsReview && review?.job?.id && (
+          <button
+            type="button"
+            onClick={handleCancelSequence}
+            disabled={loading || applying}
+            style={{ ...S.button, width: "100%", marginTop: 6, background: "transparent", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
+          >
+            <XCircle size={11} /> Cancel sequence & return unused frames
+          </button>
+        )}
 
         <div style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.45, marginTop: 8 }}>
           Flow: pick segment → chọn role/màu → recolor vùng hoặc sửa tay → Apply để frame này thành correction keyframe.

@@ -1,0 +1,21 @@
+import{c as i}from"./createLucideIcon-B_1HB0LV.js";import{j as e,L as u}from"./index-DbP5fpIg.js";import{S as h}from"./sparkles-BIfbzEEs.js";import{C as x}from"./clock-3-B41dKn8G.js";/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const y=[["path",{d:"M10.268 21a2 2 0 0 0 3.464 0",key:"vwvbt9"}],["path",{d:"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326",key:"11g9vi"}]],M=i("bell",y);/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const v=[["path",{d:"M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z",key:"1fr9dc"}],["path",{d:"M8 10v4",key:"tgpxqk"}],["path",{d:"M12 10v2",key:"hh53o1"}],["path",{d:"M16 10v6",key:"1d6xys"}]],b=i("folder-kanban",v);/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const f=[["path",{d:"m12 14 4-4",key:"9kzdfg"}],["path",{d:"M3.34 19a10 10 0 1 1 17.32 0",key:"19p75a"}]],j=i("gauge",f);/**
+ * @license lucide-react v0.487.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */const m=[["path",{d:"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2",key:"975kel"}],["circle",{cx:"12",cy:"7",r:"4",key:"17ys0d"}]],A=i("user",m);function k({used:a,limit:r}){const s=r>0?Math.min(100,Math.round(a/r*100)):100,o=s>=90;return e.jsx("div",{style:{height:6,borderRadius:999,background:"rgba(148,163,184,.18)",overflow:"hidden",marginTop:8},children:e.jsx("div",{style:{width:`${s}%`,height:"100%",borderRadius:999,background:o?"#FB7185":"linear-gradient(90deg,#8B5CF6,#EC4899)"}})})}function B({entitlements:a,compact:r=!1}){const s=a.limits.projects,o=s==null?`${a.usage.projects}`:`${a.usage.projects} / ${s}`,n=a.plan.code==="trial"?`PRO TRIAL · ${a.plan.trialDaysRemaining} day${a.plan.trialDaysRemaining===1?"":"s"} left`:`${a.plan.name.toUpperCase()} PLAN`,c=[{icon:b,label:"Projects",value:o,used:a.usage.projects,limit:s||Math.max(a.usage.projects,1)},{icon:j,label:"Processing Frames",value:`${a.usage.processingFrames} / ${a.limits.processingFrames}`,used:a.usage.processingFrames+a.usage.processingFramesReserved,limit:a.limits.processingFrames},{icon:h,label:"Creative Credits",value:`${a.usage.creativeCreditsRemaining} remaining`,used:a.usage.creativeCredits+a.usage.creativeCreditsReserved,limit:a.limits.creativeCredits}];return e.jsxs("section",{style:{border:"1px solid rgba(168,85,247,.3)",background:"linear-gradient(135deg,rgba(124,58,237,.17),rgba(236,72,153,.08))",borderRadius:18,padding:r?16:22,color:"#F8FAFC"},children:[e.jsxs("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,marginBottom:r?12:18},children:[e.jsxs("div",{children:[e.jsx("div",{style:{fontSize:11,letterSpacing:".08em",color:"#C4B5FD",fontWeight:800},children:n}),e.jsxs("div",{style:{fontSize:12,color:"#94A3B8",marginTop:5,display:"flex",alignItems:"center",gap:6},children:[e.jsx(x,{size:12})," Resets ",new Date(a.plan.periodEnd).toLocaleDateString("vi-VN")]})]}),e.jsx(u,{to:"/settings?tab=billing",style:{textDecoration:"none",color:"white",background:"linear-gradient(135deg,#7C3AED,#EC4899)",padding:"9px 13px",borderRadius:10,fontSize:12,fontWeight:800},children:a.plan.code==="pro"?"Manage plan":"Upgrade to Pro"})]}),e.jsx("div",{style:{display:"grid",gridTemplateColumns:r?"1fr":"repeat(3,minmax(0,1fr))",gap:12},children:c.map(({icon:g,label:d,value:t,used:l,limit:p})=>e.jsxs("div",{style:{borderRadius:13,padding:"12px 13px",background:"rgba(10,10,20,.48)",border:"1px solid rgba(255,255,255,.08)"},children:[e.jsxs("div",{style:{display:"flex",alignItems:"center",gap:7,color:"#AAB2D5",fontSize:11},children:[e.jsx(g,{size:13})," ",d]}),e.jsx("div",{style:{fontSize:16,fontWeight:800,marginTop:5},children:t}),e.jsx(k,{used:l,limit:p})]},d))})]})}export{M as B,b as F,B as U,A as a};

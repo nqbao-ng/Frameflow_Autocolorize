@@ -1,5 +1,5 @@
 // import { createRoot } from "react-dom/client";
-// import App from "./app/App.tsx";
+// import App from "./app/App";
 // import "./styles/index.css";
 import "./styles/neon-v2.css";
 import "./styles/landing.css";
@@ -10,7 +10,7 @@ import "./styles/landing.css";
   
 import { createRoot } from "react-dom/client";
 
-import App from "./app/App.tsx";
+import App from "./app/App";
 
 import "./styles/index.css";
 import "./styles/neon-v2.css";

@@ -9,11 +9,13 @@ import {
   sendError,
   sendJson,
 } from '../../server/colorization-shared.js';
+import { ensureProjectOwnership, requireUser } from '../../server/account-shared.js';
 
 export default async function handler(req, res) {
   if (!ensureMethod(req, res, ['POST'])) return;
 
   try {
+    const user = await requireUser(req);
     const body = await readJsonBody(req);
     const projectId = body.projectId || body.project_id;
     const frameId = body.frameId || body.frame_id;
@@ -29,14 +31,20 @@ export default async function handler(req, res) {
     if (!corrections.length) return sendError(res, 400, 'At least one correction is required');
 
     const supabase = getSupabaseAdmin();
+    await ensureProjectOwnership(supabase, user.id, projectId, frameId);
     const job = await getLatestJob(supabase, projectId, jobId);
 
     if (!job) return sendError(res, 404, 'No colorization job found for this project');
+    if (job.user_id && job.user_id !== user.id) return sendError(res, 403, 'Colorization job access denied');
+    if (job.status === JOB_STATUS.COMPLETED && propagateAfter) {
+      return sendError(res, 409, 'This job is complete. Save the correction keyframe and start a new Auto Color Sequence to process later frames.');
+    }
 
     const { data: frame, error: frameError } = await supabase
       .from('frames')
       .select('*')
       .eq('id', frameId)
+      .eq('project_id', projectId)
       .single();
 
     if (frameError) throw frameError;
@@ -158,10 +166,13 @@ export default async function handler(req, res) {
       ? currentCursor + 1
       : Number(updatedJobFrame?.frame_index ?? frame.frame_index ?? 0) + 1;
 
+    const nextJobStatus = job.status === JOB_STATUS.COMPLETED
+      ? JOB_STATUS.COMPLETED
+      : propagateAfter ? JOB_STATUS.RUNNING : JOB_STATUS.WAITING_REVIEW;
     const { data: updatedJob, error: updateJobError } = await supabase
       .from('colorization_jobs')
       .update({
-        status: propagateAfter ? JOB_STATUS.RUNNING : JOB_STATUS.WAITING_REVIEW,
+        status: nextJobStatus,
         current_review_frame_id: null,
         last_trusted_frame_id: frameId,
         next_frame_index: nextFrameIndex,
@@ -171,6 +182,12 @@ export default async function handler(req, res) {
       .single();
 
     if (updateJobError) throw updateJobError;
+
+    await supabase
+      .from('projects')
+      .update({ status: nextJobStatus === JOB_STATUS.COMPLETED ? 'completed' : propagateAfter ? 'processing' : 'needs_review', updated_at: new Date().toISOString() })
+      .eq('id', projectId)
+      .eq('user_id', user.id);
 
     return sendJson(res, 200, {
       ok: true,
@@ -182,6 +199,6 @@ export default async function handler(req, res) {
       message: 'Correction saved. This frame is now the latest correction keyframe.',
     });
   } catch (error) {
-    return sendError(res, 500, 'Failed to apply correction', String(error?.message || error));
+    return sendError(res, Number(error?.statusCode) || 500, 'Failed to apply correction', error?.details || error?.message || String(error));
   }
 }

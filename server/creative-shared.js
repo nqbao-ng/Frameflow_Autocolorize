@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js';
 import {
   callFrameFlowBackend,
   clampInteger,
@@ -11,6 +10,16 @@ import {
   sendJson,
   validatePrompt,
 } from './stability-shared.js';
+import {
+  CREATIVE_COSTS,
+  RESOURCE_TYPES,
+  ensureProjectOwnership,
+  getEntitlements,
+  getSupabaseAdmin,
+  recordUsageEvent,
+  releaseUsage,
+  reserveUsage,
+} from './account-shared.js';
 
 export const CREATIVE_BUCKET = 'creative-assets';
 export const CREATIVE_JOB_STATUS = {
@@ -22,81 +31,17 @@ export const CREATIVE_JOB_STATUS = {
 };
 
 const STYLE_PRESETS = new Set([
-  '3d-model',
-  'analog-film',
-  'anime',
-  'cinematic',
-  'comic-book',
-  'digital-art',
-  'enhance',
-  'fantasy-art',
-  'isometric',
-  'line-art',
-  'low-poly',
-  'modeling-compound',
-  'neon-punk',
-  'origami',
-  'photographic',
-  'pixel-art',
-  'tile-texture',
+  '3d-model', 'analog-film', 'anime', 'cinematic', 'comic-book', 'digital-art',
+  'enhance', 'fantasy-art', 'isometric', 'line-art', 'low-poly',
+  'modeling-compound', 'neon-punk', 'origami', 'photographic', 'pixel-art', 'tile-texture',
 ]);
 
-export function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    const error = new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-    error.statusCode = 503;
-    throw error;
-  }
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-
 export async function enforceCreativeLimits(supabase, userId) {
-  const nowIso = new Date().toISOString();
-  const { data: subscription, error: subscriptionError } = await supabase
-    .from('subscriptions')
-    .select('plan_code, status, current_period_end')
-    .eq('user_id', userId)
-    .maybeSingle();
-  if (subscriptionError) throw subscriptionError;
-
-  const planCode = subscription?.status === 'active' && subscription.current_period_end > nowIso
-    ? subscription.plan_code
-    : 'free';
-
-  const { data: plan, error: planError } = await supabase
-    .from('billing_plans')
-    .select('creative_daily_limit, creative_concurrent_limit')
-    .eq('code', planCode)
-    .eq('active', true)
-    .maybeSingle();
-  if (planError) throw planError;
-
-  const maxActive = Math.max(
-    1,
-    Number(plan?.creative_concurrent_limit)
-      || Number(process.env.FRAMEFLOW_CREATIVE_MAX_ACTIVE_PER_USER)
-      || 1,
-  );
-  const dailyLimit = Math.max(
-    1,
-    Number(plan?.creative_daily_limit)
-      || Number(process.env.FRAMEFLOW_CREATIVE_DAILY_LIMIT)
-      || 10,
-  );
-
-  const { count: activeCount, error: activeError } = await supabase
-    .from('creative_jobs')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .in('status', ['queued', 'processing']);
-  if (activeError) throw activeError;
-  if ((activeCount || 0) >= maxActive) {
-    const error = new Error(`Your ${planCode} plan allows ${maxActive} active Creative Studio job(s). Wait for one to finish or upgrade your plan.`);
+  const entitlements = await getEntitlements(supabase, userId);
+  const maxActive = entitlements.limits.creativeConcurrent;
+  const dailyLimit = entitlements.limits.creativeDaily;
+  if (entitlements.usage.activeCreativeJobs >= maxActive) {
+    const error = new Error(`Your ${entitlements.plan.name} plan allows ${maxActive} active Creative Studio job(s). Wait for one to finish.`);
     error.statusCode = 429;
     throw error;
   }
@@ -110,12 +55,16 @@ export async function enforceCreativeLimits(supabase, userId) {
     .gte('created_at', dayStart.toISOString());
   if (dailyError) throw dailyError;
   if ((dailyCount || 0) >= dailyLimit) {
-    const error = new Error(`Your ${planCode} plan has reached its daily Creative Studio limit (${dailyLimit} jobs).`);
+    const error = new Error(`Your ${entitlements.plan.name} plan has reached its daily Creative Studio safety limit (${dailyLimit} jobs).`);
     error.statusCode = 429;
     throw error;
   }
 
-  return { planCode, maxActive, dailyLimit, activeCount: activeCount || 0, dailyCount: dailyCount || 0 };
+  return { entitlements, maxActive, dailyLimit, dailyCount: dailyCount || 0 };
+}
+
+export function getCreativeCreditCost(jobType) {
+  return jobType === 'outpaint' ? CREATIVE_COSTS.outpaint : CREATIVE_COSTS.sketch;
 }
 
 export function imageExtension(contentType) {
@@ -126,43 +75,7 @@ export function imageExtension(contentType) {
 
 export function sanitizeUuid(value) {
   const clean = String(value || '').trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean)
-    ? clean
-    : null;
-}
-
-export async function ensureProjectOwnership(supabase, userId, projectId, frameId = null) {
-  if (!projectId) return;
-
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('id')
-    .eq('id', projectId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (projectError) throw projectError;
-  if (!project) {
-    const error = new Error('Project not found or access denied');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if (frameId) {
-    const { data: frame, error: frameError } = await supabase
-      .from('frames')
-      .select('id')
-      .eq('id', frameId)
-      .eq('project_id', projectId)
-      .maybeSingle();
-
-    if (frameError) throw frameError;
-    if (!frame) {
-      const error = new Error('Frame does not belong to the selected project');
-      error.statusCode = 400;
-      throw error;
-    }
-  }
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean) ? clean : null;
 }
 
 export function normalizeCreativeRequest(body) {
@@ -170,7 +83,6 @@ export function normalizeCreativeRequest(body) {
   const prompt = validatePrompt(body.prompt, { required: jobType === 'sketch' });
   const negativePrompt = validatePrompt(body.negativePrompt, { required: false });
   const stylePreset = String(body.stylePreset || '').trim();
-
   if (stylePreset && !STYLE_PRESETS.has(stylePreset)) {
     const error = new Error('Unsupported visual style preset');
     error.statusCode = 400;
@@ -186,9 +98,7 @@ export function normalizeCreativeRequest(body) {
         control_strength: clampNumber(body.controlStrength, 0, 1, 0.9),
         style_preset: stylePreset || null,
         style_id: String(body.styleId || '').trim() || null,
-        seed: body.seed !== undefined && body.seed !== null && body.seed !== ''
-          ? Math.max(0, Math.round(Number(body.seed)))
-          : null,
+        seed: body.seed !== undefined && body.seed !== null && body.seed !== '' ? Math.max(0, Math.round(Number(body.seed))) : null,
       },
     };
   }
@@ -202,21 +112,15 @@ export function normalizeCreativeRequest(body) {
     error.statusCode = 400;
     throw error;
   }
-
   return {
     jobType,
     prompt: prompt || null,
     negativePrompt: null,
     settings: {
-      left,
-      right,
-      up,
-      down,
+      left, right, up, down,
       creativity: clampNumber(body.creativity, 0.1, 1, 0.45),
       style_preset: stylePreset || null,
-      seed: body.seed !== undefined && body.seed !== null && body.seed !== ''
-        ? Math.max(0, Math.round(Number(body.seed)))
-        : null,
+      seed: body.seed !== undefined && body.seed !== null && body.seed !== '' ? Math.max(0, Math.round(Number(body.seed))) : null,
     },
   };
 }
@@ -226,24 +130,16 @@ export async function uploadSourceImage(supabase, { userId, jobId, imageDataUrl 
   const extension = imageExtension(contentType);
   const path = `${userId}/${jobId}/source.${extension}`;
   const buffer = Buffer.from(imageBase64, 'base64');
-
-  const { error } = await supabase.storage
-    .from(CREATIVE_BUCKET)
-    .upload(path, buffer, {
-      contentType,
-      upsert: false,
-      cacheControl: '3600',
-    });
-
+  const { error } = await supabase.storage.from(CREATIVE_BUCKET).upload(path, buffer, {
+    contentType, upsert: false, cacheControl: '3600',
+  });
   if (error) throw error;
-  return { path, contentType };
+  return { path, contentType, bytes: buffer.length };
 }
 
 export async function createSignedAssetUrl(supabase, bucket, path, expiresIn = 3600) {
   if (!bucket || !path) return null;
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(path, expiresIn);
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
   if (error) throw error;
   return data?.signedUrl || null;
 }
@@ -254,7 +150,6 @@ export async function serializeCreativeJob(supabase, job) {
   if (job.status === CREATIVE_JOB_STATUS.COMPLETED && job.result_bucket && job.result_path) {
     resultUrl = await createSignedAssetUrl(supabase, job.result_bucket, job.result_path, 3600);
   }
-
   return {
     id: job.id,
     jobType: job.job_type,
@@ -268,6 +163,7 @@ export async function serializeCreativeJob(supabase, job) {
     seed: job.seed,
     error: job.error_message,
     attemptCount: job.attempt_count,
+    creditCost: Number(job.creative_credit_cost || 0),
     createdAt: job.created_at,
     updatedAt: job.updated_at,
     startedAt: job.started_at,
@@ -277,9 +173,7 @@ export async function serializeCreativeJob(supabase, job) {
 }
 
 export async function enqueueCreativeJob(jobId) {
-  return callFrameFlowBackend('/v1/creative/jobs/enqueue', {
-    payload: { job_id: jobId },
-  });
+  return callFrameFlowBackend('/v1/creative/jobs/enqueue', { payload: { job_id: jobId } });
 }
 
 export async function handleCreativeApiError(res, error, fallbackMessage) {
@@ -287,4 +181,16 @@ export async function handleCreativeApiError(res, error, fallbackMessage) {
   return sendError(res, status, fallbackMessage, error?.details || error?.message || String(error));
 }
 
-export { ensureMethod, readJsonBody, requireUser, sendJson };
+export {
+  CREATIVE_COSTS,
+  RESOURCE_TYPES,
+  ensureMethod,
+  ensureProjectOwnership,
+  getSupabaseAdmin,
+  readJsonBody,
+  recordUsageEvent,
+  releaseUsage,
+  requireUser,
+  reserveUsage,
+  sendJson,
+};

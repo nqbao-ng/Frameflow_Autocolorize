@@ -7,6 +7,7 @@ import {
   sendError,
   sendJson,
 } from '../server/stability-shared.js';
+import { enforceApiRateLimit, getEntitlements, serializePlan } from '../server/account-shared.js';
 
 export const config = { maxDuration: 30 };
 
@@ -159,19 +160,7 @@ async function insertPendingPaymentOrder(supabase, payload) {
 }
 
 function normalizePlan(plan) {
-  return {
-    code: plan.code,
-    name: plan.name,
-    description: plan.description,
-    priceVnd: plan.price_vnd,
-    durationDays: plan.duration_days,
-    creditsGrant: plan.credits_grant,
-    projectLimit: plan.project_limit,
-    creativeDailyLimit: plan.creative_daily_limit,
-    creativeConcurrentLimit: plan.creative_concurrent_limit,
-    sortOrder: plan.sort_order,
-    features: Array.isArray(plan.features) ? plan.features : [],
-  };
+  return serializePlan(plan);
 }
 
 function serializePayment(payment) {
@@ -194,12 +183,13 @@ function serializePayment(payment) {
   };
 }
 
-async function getActivePlans(supabase) {
-  const { data, error } = await supabase
+async function getActivePlans(supabase, { publicOnly = false } = {}) {
+  let query = supabase
     .from('billing_plans')
     .select('*')
-    .eq('active', true)
-    .order('sort_order', { ascending: true });
+    .eq('active', true);
+  if (publicOnly) query = query.eq('public_visible', true);
+  const { data, error } = await query.order('sort_order', { ascending: true });
   if (error) throw error;
   return (data || []).map(normalizePlan);
 }
@@ -242,24 +232,17 @@ async function applyPaidOrder(supabase, payosData) {
 
 async function handlePlans(_req, res) {
   const supabase = getSupabaseAdmin();
-  const plans = await getActivePlans(supabase);
+  const plans = await getActivePlans(supabase, { publicOnly: true });
   return sendJson(res, 200, { ok: true, plans });
 }
 
 async function handleSummary(req, res) {
   const user = await requireUser(req);
   const supabase = getSupabaseAdmin();
-  const [plans, subscription] = await Promise.all([
-    getActivePlans(supabase),
-    expireSubscriptionIfNeeded(supabase, user.id),
-  ]);
-
-  const [{ data: profile, error: profileError }, { data: payments, error: paymentsError }] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('credits, subscription_plan')
-      .eq('id', user.id)
-      .maybeSingle(),
+  await expireSubscriptionIfNeeded(supabase, user.id);
+  const [plans, entitlements, paymentsResult] = await Promise.all([
+    getActivePlans(supabase, { publicOnly: true }),
+    getEntitlements(supabase, user.id),
     supabase
       .from('payment_orders')
       .select('*')
@@ -267,15 +250,22 @@ async function handleSummary(req, res) {
       .order('created_at', { ascending: false })
       .limit(20),
   ]);
-  if (profileError) throw profileError;
-  if (paymentsError) throw paymentsError;
+  if (paymentsResult.error) throw paymentsResult.error;
+
+  const { data: subscription, error: subscriptionError } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (subscriptionError) throw subscriptionError;
 
   return sendJson(res, 200, {
     ok: true,
     plans,
+    entitlements,
     profile: {
-      credits: profile?.credits ?? 0,
-      planCode: subscription?.status === 'active' ? subscription.plan_code : 'free',
+      credits: entitlements.usage.creativeCreditsRemaining,
+      planCode: entitlements.plan.code,
     },
     subscription: subscription ? {
       planCode: subscription.plan_code,
@@ -283,13 +273,14 @@ async function handleSummary(req, res) {
       currentPeriodStart: subscription.current_period_start,
       currentPeriodEnd: subscription.current_period_end,
     } : null,
-    payments: (payments || []).map(serializePayment),
+    payments: (paymentsResult.data || []).map(serializePayment),
   });
 }
 
 async function handleCreateCheckout(req, res) {
   const user = await requireUser(req);
   const supabase = getSupabaseAdmin();
+  await enforceApiRateLimit(supabase, { key: `billing:checkout:${user.id}`, limit: 5, windowSeconds: 900 });
   const body = await readJsonBody(req);
   const planCode = String(body.planCode || '').trim().toLowerCase();
 
