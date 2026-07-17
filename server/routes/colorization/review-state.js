@@ -65,7 +65,7 @@ export default async function handler(req, res) {
       ok: true,
       has_review: job.current_review_frame_id === frameId || jobFrame.pipeline_status === 'needs_review_not_reference',
       segment_analysis_available: segments.length > 0,
-      segment_analysis_message: segments.length ? null : 'Segment analysis is unavailable for this frame. Use manual correction or retry processing.',
+      segment_analysis_message: segments.length ? null : 'We could not rebuild editable regions for this frame. Retry the review data, or correct it with edge-aware Brush/Fill and continue.',
       job,
       job_frame: jobFrame,
       frame: frameRecord,

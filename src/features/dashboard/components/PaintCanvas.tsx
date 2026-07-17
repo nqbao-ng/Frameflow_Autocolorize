@@ -426,6 +426,9 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
   };
 
   // ── Tool: Flood Fill ───────────────────────────────────────────────────────
+  // Uses the transparent lineart layer as a hard boundary and adds a small
+  // underpaint bleed beneath anti-aliased line pixels. This removes the white
+  // halo that normally appears when a fill stops one or two pixels before a line.
   const doFloodFill = (
     paintCtx: CanvasRenderingContext2D,
     x: number,
@@ -433,86 +436,134 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
   ) => {
     const { r: fr, g: fg, b: fb } = hexToRgb(color);
     const bg = bgRef.current!;
-    const w = bg.width,
-      h = bg.height;
+    const w = bg.width;
+    const h = bg.height;
+    if (!w || !h) return;
 
     const tmp = document.createElement("canvas");
     tmp.width = w;
     tmp.height = h;
-    const tmpCtx = tmp.getContext("2d")!;
+    const tmpCtx = tmp.getContext("2d", { willReadFrequently: true })!;
     if (colorRef.current) tmpCtx.drawImage(colorRef.current, 0, 0);
     if (canvasRef.current) tmpCtx.drawImage(canvasRef.current, 0, 0);
     tmpCtx.drawImage(bg, 0, 0);
-    let cd = tmpCtx.getImageData(0, 0, w, h).data;
+    const composite = tmpCtx.getImageData(0, 0, w, h).data;
 
-    let sealedMask: Uint8Array | null = null;
+    const lineCtx = bg.getContext("2d", { willReadFrequently: true });
+    if (!lineCtx) return;
+    const lineData = lineCtx.getImageData(0, 0, w, h).data;
+
+    // Soft anti-aliased pixels remain paintable underneath; darker pixels form
+    // the actual flood boundary. Gap Closing expands that boundary by one pixel.
+    let barrier = new Uint8Array(w * h);
+    for (let p = 0; p < w * h; p += 1) {
+      if (lineData[p * 4 + 3] >= 72) barrier[p] = 1;
+    }
+
     if (gapClose) {
-      const gapSize = 2;
-      const isLine = (i: number) => {
-        const lum = cd[i] * 0.299 + cd[i + 1] * 0.587 + cd[i + 2] * 0.114;
-        return lum < 80 && cd[i + 3] > 30;
-      };
-      sealedMask = new Uint8Array(w * h);
-      for (let p = 0; p < w * h; p++) {
-        if (isLine(p * 4)) sealedMask[p] = 1;
-      }
-      const dilated = new Uint8Array(w * h);
-      for (let py = 0; py < h; py++)
-        for (let px2 = 0; px2 < w; px2++) {
-          const p = py * w + px2;
-          if (!sealedMask[p]) continue;
-          for (let dy = -gapSize; dy <= gapSize; dy++)
-            for (let dx = -gapSize; dx <= gapSize; dx++) {
-              const nx = px2 + dx,
-                ny = py + dy;
-              if (nx >= 0 && nx < w && ny >= 0 && ny < h) dilated[ny * w + nx] = 1;
+      const closed = barrier.slice();
+      for (let py = 0; py < h; py += 1) {
+        for (let px = 0; px < w; px += 1) {
+          const p = py * w + px;
+          if (!barrier[p]) continue;
+          for (let dy = -1; dy <= 1; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              const nx = px + dx;
+              const ny = py + dy;
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h) closed[ny * w + nx] = 1;
             }
+          }
         }
-      sealedMask = dilated;
+      }
+      barrier = closed;
     }
 
     const sx = Math.floor(Math.max(0, Math.min(w - 1, x)));
     const sy = Math.floor(Math.max(0, Math.min(h - 1, y)));
-    const spx = (sx + sy * w) * 4;
-    const [tr, tg, tb] = [cd[spx], cd[spx + 1], cd[spx + 2]];
-    if (tr === fr && tg === fg && tb === fb) return;
+    const seed = sx + sy * w;
+    if (barrier[seed]) return;
 
-    const tol = fillTolerance;
-    const colorMatch = (i: number) =>
-      Math.abs(cd[i] - tr) < tol &&
-      Math.abs(cd[i + 1] - tg) < tol &&
-      Math.abs(cd[i + 2] - tb) < tol;
+    const seedIndex = seed * 4;
+    const tr = composite[seedIndex];
+    const tg = composite[seedIndex + 1];
+    const tb = composite[seedIndex + 2];
+    if (Math.abs(tr - fr) <= 1 && Math.abs(tg - fg) <= 1 && Math.abs(tb - fb) <= 1) return;
 
-    const paintId = paintCtx.getImageData(0, 0, w, h);
-    const pd = paintId.data;
-    const visited = new Uint8Array(w * h);
-    const alpha = Math.round((opacity / 100) * 255);
-    const stack = new Int32Array(w * h);
-    let stackTop = 0;
-    stack[stackTop++] = sx + sy * w;
+    const tolerance = Math.max(0, fillTolerance);
+    const toleranceSquared = tolerance * tolerance * 3;
+    const colorMatch = (pixel: number) => {
+      const i = pixel * 4;
+      const dr = composite[i] - tr;
+      const dg = composite[i + 1] - tg;
+      const db = composite[i + 2] - tb;
+      return dr * dr + dg * dg + db * db <= toleranceSquared;
+    };
 
-    while (stackTop > 0) {
-      const p = stack[--stackTop];
-      if (visited[p]) continue;
-      visited[p] = 1;
-      if (sealedMask && sealedMask[p]) continue;
+    const queue = new Int32Array(w * h);
+    const queued = new Uint8Array(w * h);
+    const fillMask = new Uint8Array(w * h);
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = seed;
+    queued[seed] = 1;
+
+    const enqueue = (pixel: number) => {
+      if (pixel < 0 || pixel >= w * h || queued[pixel]) return;
+      queued[pixel] = 1;
+      queue[tail++] = pixel;
+    };
+
+    while (head < tail) {
+      const p = queue[head++];
+      if (barrier[p] || !colorMatch(p)) continue;
+      fillMask[p] = 1;
+      const px = p % w;
+      if (px > 0) enqueue(p - 1);
+      if (px < w - 1) enqueue(p + 1);
+      if (p >= w) enqueue(p - w);
+      if (p < w * (h - 1)) enqueue(p + w);
+    }
+
+    // Expand two pixels under soft line edges, but never cross the opaque line
+    // core. The visible lineart canvas sits above this paint layer.
+    let expanded = fillMask;
+    const edgeBleedRadius = 2;
+    for (let iteration = 0; iteration < edgeBleedRadius; iteration += 1) {
+      const next = expanded.slice();
+      for (let py = 0; py < h; py += 1) {
+        for (let px = 0; px < w; px += 1) {
+          const p = py * w + px;
+          if (expanded[p] || lineData[p * 4 + 3] >= 225) continue;
+          let touchesFill = false;
+          for (let dy = -1; dy <= 1 && !touchesFill; dy += 1) {
+            for (let dx = -1; dx <= 1; dx += 1) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = px + dx;
+              const ny = py + dy;
+              if (nx >= 0 && nx < w && ny >= 0 && ny < h && expanded[ny * w + nx]) {
+                touchesFill = true;
+                break;
+              }
+            }
+          }
+          if (touchesFill) next[p] = 1;
+        }
+      }
+      expanded = next;
+    }
+
+    const paintImage = paintCtx.getImageData(0, 0, w, h);
+    const pd = paintImage.data;
+    const alpha = Math.round((Math.min(100, Math.max(0, opacity)) / 100) * 255);
+    for (let p = 0; p < expanded.length; p += 1) {
+      if (!expanded[p]) continue;
       const i = p * 4;
-      if (!colorMatch(i)) continue;
       pd[i] = fr;
       pd[i + 1] = fg;
       pd[i + 2] = fb;
       pd[i + 3] = alpha;
-      cd[i] = fr;
-      cd[i + 1] = fg;
-      cd[i + 2] = fb;
-      cd[i + 3] = 255;
-      const px2 = p % w;
-      if (px2 > 0) stack[stackTop++] = p - 1;
-      if (px2 < w - 1) stack[stackTop++] = p + 1;
-      if (p >= w) stack[stackTop++] = p - w;
-      if (p < w * (h - 1)) stack[stackTop++] = p + w;
     }
-    paintCtx.putImageData(paintId, 0, 0);
+    paintCtx.putImageData(paintImage, 0, 0);
   };
 
   // ── Tool: Color Picker ─────────────────────────────────────────────────────

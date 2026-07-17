@@ -2,16 +2,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router";
 import {
   ArrowRight,
+  Check,
   CheckCircle2,
   Download,
   Expand,
   ImagePlus,
   Loader2,
   Palette,
+  Pencil,
   RefreshCw,
   Sparkles,
   Upload,
   WandSparkles,
+  Bot,
   X,
 } from "lucide-react";
 import { ProjectsHeader } from "@/features/projects/components/ProjectsHeader";
@@ -68,8 +71,12 @@ type SketchDetails = {
   environment: string;
   lighting: string;
   mood: string;
+  preferredColors: string;
+  lineFinish: string;
   additionalInstructions: string;
 };
+
+type AiDetailKey = "subject" | "composition" | "preserveDetails" | "colorPalette" | "environment" | "lighting" | "mood";
 
 const SKETCH_STYLES: StyleConfig[] = [
   {
@@ -220,7 +227,9 @@ function detailsFromAnalysis(analysis: SketchAnalysisResponse, styleId: string):
     environment: mergeStyleGuidance(style.defaultEnvironment, analysis.environment),
     lighting: mergeStyleGuidance(style.defaultLighting, analysis.lighting),
     mood: mergeStyleGuidance(style.defaultMood, analysis.mood),
-    additionalInstructions: style.defaultAdditional,
+    preferredColors: "",
+    lineFinish: "",
+    additionalInstructions: "",
   };
 }
 
@@ -237,15 +246,62 @@ function buildSketchPrompt(details: SketchDetails, styleId: string) {
     `Main subject: ${details.subject}`,
     `Composition: ${details.composition}`,
     `Important visible details to preserve: ${preserve || "Preserve the important visible details from the sketch."}`,
-    "Lineart: Refine the rough sketch into precise, clean, defined lineart with smooth, consistent contours and neat inked lines while preserving the original structure.",
+    `Lineart: Refine the rough sketch into precise, clean, defined lineart with smooth, consistent contours and neat inked lines while preserving the original structure.${details.lineFinish ? ` User line/finish preference: ${details.lineFinish}` : ""}`,
     `Art style: ${style.promptStyle}`,
-    `Color treatment: Use simple flat colors, controlled color blocking, and restrained cel shading. ${details.colorPalette}`,
+    `Color treatment: Use simple flat colors, controlled color blocking, and restrained cel shading. ${details.colorPalette}${details.preferredColors ? ` User color preference: ${details.preferredColors}` : ""}`,
     `Environment: ${details.environment}`,
     `Lighting: ${details.lighting}`,
     `Mood: ${details.mood}`,
-    details.additionalInstructions ? `Additional direction: ${details.additionalInstructions}` : "",
+    style.defaultAdditional ? `Style safeguard: ${style.defaultAdditional}` : "",
+    details.additionalInstructions ? `Additional user direction: ${details.additionalInstructions}` : "",
     "Output quality: High-definition, presentation-quality concept art with a clean 2D illustration finish. Do not add unrelated objects or significantly change the original sketch design.",
   ].filter(Boolean).join("\n\n");
+}
+
+function AiDetectedField({
+  label,
+  value,
+  rows,
+  editing,
+  onEdit,
+  onDone,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: string;
+  rows: number;
+  editing: boolean;
+  onEdit: () => void;
+  onDone: () => void;
+  onChange: (value: string) => void;
+  hint?: string;
+}) {
+  return (
+    <label className={`creative-ai-field${editing ? " is-editing" : ""}`}>
+      <span className="creative-ai-field-heading">
+        <span>
+          <strong>{label}</strong>
+          <em><Bot size={11} /> AI prepared</em>
+        </span>
+        <button
+          type="button"
+          onClick={editing ? onDone : onEdit}
+          title={editing ? `Finish editing ${label}` : `Edit ${label}`}
+          aria-label={editing ? `Finish editing ${label}` : `Edit ${label}`}
+        >
+          {editing ? <Check size={13} /> : <Pencil size={13} />}
+        </button>
+      </span>
+      <textarea
+        rows={rows}
+        value={value}
+        readOnly={!editing}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {hint ? <small>{hint}</small> : null}
+    </label>
+  );
 }
 
 function UploadPanel({
@@ -334,6 +390,15 @@ export function CreativeStudioPage() {
   const [negativePrompt, setNegativePrompt] = useState(buildNegativePrompt("anime"));
   const [controlStrength, setControlStrength] = useState(0.9);
   const [details, setDetails] = useState<SketchDetails>(() => detailsFromAnalysis(fallbackAnalysis("anime"), "anime"));
+  const [editableAiFields, setEditableAiFields] = useState<Record<AiDetailKey, boolean>>({
+    subject: false,
+    composition: false,
+    preserveDetails: false,
+    colorPalette: false,
+    environment: false,
+    lighting: false,
+    mood: false,
+  });
 
   const [ratio, setRatio] = useState<"16:9" | "4:5" | "9:16" | "1:1">("16:9");
   const [creativity, setCreativity] = useState(0.45);
@@ -489,8 +554,8 @@ export function CreativeStudioPage() {
       environment: styled.environment,
       lighting: styled.lighting,
       mood: styled.mood,
-      additionalInstructions: styled.additionalInstructions,
     }));
+    setEditableAiFields({ subject: false, composition: false, preserveDetails: false, colorPalette: false, environment: false, lighting: false, mood: false });
   }, [styleId, activeStyle, analysis]);
 
   useEffect(() => {
@@ -506,12 +571,24 @@ export function CreativeStudioPage() {
         const response = await analyzeSketch({ imageDataUrl: optimized.dataUrl, styleHint: styleId });
         if (cancelled) return;
         setAnalysis(response);
-        setDetails(detailsFromAnalysis(response, styleId));
+        setDetails((current) => ({
+          ...detailsFromAnalysis(response, styleId),
+          preferredColors: current.preferredColors,
+          lineFinish: current.lineFinish,
+          additionalInstructions: current.additionalInstructions,
+        }));
+        setEditableAiFields({ subject: false, composition: false, preserveDetails: false, colorPalette: false, environment: false, lighting: false, mood: false });
       } catch (analysisIssue) {
         if (cancelled) return;
         const fallback = fallbackAnalysis(styleId);
         setAnalysis(fallback);
-        setDetails(detailsFromAnalysis(fallback, styleId));
+        setDetails((current) => ({
+          ...detailsFromAnalysis(fallback, styleId),
+          preferredColors: current.preferredColors,
+          lineFinish: current.lineFinish,
+          additionalInstructions: current.additionalInstructions,
+        }));
+        setEditableAiFields({ subject: false, composition: false, preserveDetails: false, colorPalette: false, environment: false, lighting: false, mood: false });
         setAnalysisError((analysisIssue as Error).message || "Sketch analysis is temporarily unavailable.");
       } finally {
         if (!cancelled) setIsAnalyzing(false);
@@ -720,19 +797,40 @@ export function CreativeStudioPage() {
                   </label>
 
                   <details className="creative-advanced creative-details-panel">
-                    <summary>Customize Details</summary>
+                    <summary>Customize Details <span className="creative-summary-badge">Beginner friendly</span></summary>
                     <div className="creative-detail-grid">
-                      <label className="creative-label">Detected Subject<textarea rows={3} value={details.subject} onChange={(event) => setDetails((current) => ({ ...current, subject: event.target.value }))} /></label>
-                      <label className="creative-label">Composition<textarea rows={3} value={details.composition} onChange={(event) => setDetails((current) => ({ ...current, composition: event.target.value }))} /></label>
-                      <label className="creative-label">Details to Preserve<textarea rows={5} value={details.preserveDetails} onChange={(event) => setDetails((current) => ({ ...current, preserveDetails: event.target.value }))} /><small>Use one line per detail for easier editing.</small></label>
-                      <label className="creative-label">Color Palette<textarea rows={4} value={details.colorPalette} onChange={(event) => setDetails((current) => ({ ...current, colorPalette: event.target.value }))} /></label>
-                      <label className="creative-label">Environment<textarea rows={3} value={details.environment} onChange={(event) => setDetails((current) => ({ ...current, environment: event.target.value }))} /></label>
-                      <div className="creative-inline-fields">
-                        <label className="creative-label">Lighting<textarea rows={2} value={details.lighting} onChange={(event) => setDetails((current) => ({ ...current, lighting: event.target.value }))} /></label>
-                        <label className="creative-label">Mood<textarea rows={2} value={details.mood} onChange={(event) => setDetails((current) => ({ ...current, mood: event.target.value }))} /></label>
+                      <div className="creative-ai-guidance">
+                        <Bot size={16} />
+                        <div>
+                          <strong>AI has prepared the hard parts</strong>
+                          <span>These fields are locked by default. Use the pencil only when a detected detail is wrong.</span>
+                        </div>
                       </div>
-                      <label className="creative-label">Additional Instructions<textarea rows={3} value={details.additionalInstructions} onChange={(event) => setDetails((current) => ({ ...current, additionalInstructions: event.target.value }))} /></label>
-                      <label className="creative-label">Prompt Preview<textarea rows={10} value={promptPreview} readOnly /><small>The final prompt is generated automatically from the fields above and the selected visual style.</small></label>
+
+                      <AiDetectedField label="Detected Subject" value={details.subject} rows={3} editing={editableAiFields.subject} onEdit={() => setEditableAiFields((current) => ({ ...current, subject: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, subject: false }))} onChange={(value) => setDetails((current) => ({ ...current, subject: value }))} />
+                      <AiDetectedField label="Composition" value={details.composition} rows={3} editing={editableAiFields.composition} onEdit={() => setEditableAiFields((current) => ({ ...current, composition: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, composition: false }))} onChange={(value) => setDetails((current) => ({ ...current, composition: value }))} />
+                      <AiDetectedField label="Details to Preserve" value={details.preserveDetails} rows={5} editing={editableAiFields.preserveDetails} onEdit={() => setEditableAiFields((current) => ({ ...current, preserveDetails: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, preserveDetails: false }))} onChange={(value) => setDetails((current) => ({ ...current, preserveDetails: value }))} hint="AI keeps these visible details while refining the sketch." />
+                      <AiDetectedField label="Suggested Palette" value={details.colorPalette} rows={4} editing={editableAiFields.colorPalette} onEdit={() => setEditableAiFields((current) => ({ ...current, colorPalette: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, colorPalette: false }))} onChange={(value) => setDetails((current) => ({ ...current, colorPalette: value }))} />
+                      <AiDetectedField label="Environment" value={details.environment} rows={3} editing={editableAiFields.environment} onEdit={() => setEditableAiFields((current) => ({ ...current, environment: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, environment: false }))} onChange={(value) => setDetails((current) => ({ ...current, environment: value }))} />
+                      <div className="creative-inline-fields">
+                        <AiDetectedField label="Lighting" value={details.lighting} rows={2} editing={editableAiFields.lighting} onEdit={() => setEditableAiFields((current) => ({ ...current, lighting: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, lighting: false }))} onChange={(value) => setDetails((current) => ({ ...current, lighting: value }))} />
+                        <AiDetectedField label="Mood" value={details.mood} rows={2} editing={editableAiFields.mood} onEdit={() => setEditableAiFields((current) => ({ ...current, mood: true }))} onDone={() => setEditableAiFields((current) => ({ ...current, mood: false }))} onChange={(value) => setDetails((current) => ({ ...current, mood: value }))} />
+                      </div>
+
+                      <div className="creative-user-choices">
+                        <div className="creative-user-choices-heading">
+                          <Palette size={15} />
+                          <div><strong>Your choices</strong><span>Optional—leave blank and AI will use its suggestions.</span></div>
+                        </div>
+                        <label className="creative-label">Preferred colors<textarea rows={2} value={details.preferredColors} placeholder="Example: red mushroom hat, light green skin, muted forest background" onChange={(event) => setDetails((current) => ({ ...current, preferredColors: event.target.value }))} /><small>Describe only the colors you care about; no full prompt is needed.</small></label>
+                        <label className="creative-label">Line & finish<textarea rows={2} value={details.lineFinish} placeholder="Example: thin clean outlines, flat cel shading, no texture" onChange={(event) => setDetails((current) => ({ ...current, lineFinish: event.target.value }))} /></label>
+                        <label className="creative-label">Anything else? <span className="creative-optional-label">Optional</span><textarea rows={2} value={details.additionalInstructions} placeholder="Example: keep the facial expression exactly as sketched" onChange={(event) => setDetails((current) => ({ ...current, additionalInstructions: event.target.value }))} /></label>
+                      </div>
+
+                      <details className="creative-prompt-preview">
+                        <summary>View generated prompt</summary>
+                        <label className="creative-label"><textarea rows={10} value={promptPreview} readOnly /><small>FrameFlow combines the locked AI analysis, your selected style, and your optional choices automatically.</small></label>
+                      </details>
                     </div>
                   </details>
 

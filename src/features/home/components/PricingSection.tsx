@@ -9,14 +9,14 @@ const FALLBACK_PLANS: BillingPlan[] = [
     durationDays: 30, creditsGrant: 5, projectLimit: 2, processingFrameLimit: 50,
     creativeCreditLimit: 5, creativeDailyLimit: 3, creativeConcurrentLimit: 1, trialDays: 0,
     priorityQueue: false, highQualityExport: false, versionHistoryDays: 3, sortOrder: 10,
-    features: ["3-day Pro trial for new accounts", "2 active projects", "50 Processing Frames/month", "5 Creative Credits/month", "Manual correction and standard export"],
+    features: ["3-day Pro trial for new accounts", "50 Processing Frames/month", "5 Creative Credits/month", "Manual correction and standard export"],
   },
   {
     code: "pro", name: "Pro Beta", description: "For individual artists producing frame sequences regularly.", priceVnd: 499000,
-    durationDays: 30, creditsGrant: 200, projectLimit: 50, processingFrameLimit: 1000,
-    creativeCreditLimit: 200, creativeDailyLimit: 40, creativeConcurrentLimit: 2, trialDays: 0,
+    durationDays: 30, creditsGrant: 500, projectLimit: 50, processingFrameLimit: 2000,
+    creativeCreditLimit: 500, creativeDailyLimit: 40, creativeConcurrentLimit: 2, trialDays: 0,
     priorityQueue: true, highQualityExport: true, versionHistoryDays: 30, sortOrder: 20,
-    features: ["50 active projects", "1,000 Processing Frames/month", "200 Creative Credits/month", "2 concurrent Creative jobs", "Priority processing and high-quality export"],
+    features: ["2,000 Processing Frames/month", "500 Creative Credits/month", "2 concurrent Creative jobs", "Priority processing and high-quality export"],
   },
 ];
 

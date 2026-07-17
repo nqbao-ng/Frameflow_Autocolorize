@@ -256,6 +256,8 @@ export function buildCvSettings(jobSettings = {}) {
     gap_close_kernel: Number(jobSettings.gap_close_kernel ?? 3),
     gap_close_iterations: Number(jobSettings.gap_close_iterations ?? 1),
     line_dilate: Number(jobSettings.line_dilate ?? 1),
+    edge_fill_radius: Number(jobSettings.edge_fill_radius ?? 4),
+    color_sample_erode: Number(jobSettings.color_sample_erode ?? 1),
     min_segment_area: Number(jobSettings.min_segment_area ?? 25),
     max_side: Number(jobSettings.max_side ?? 0),
     low_confidence_threshold: Number(jobSettings.low_confidence_threshold ?? 0.55),
@@ -266,7 +268,7 @@ export function buildCvSettings(jobSettings = {}) {
     min_review_area: Number(jobSettings.min_review_area ?? 120),
     min_review_area_ratio: Number(jobSettings.min_review_area_ratio ?? 0.0005),
     use_role_memory: jobSettings.use_role_memory !== false,
-    role_memory_override_max_confidence: Number(jobSettings.role_memory_override_max_confidence ?? 0.82),
+    role_memory_override_max_confidence: Number(jobSettings.role_memory_override_max_confidence ?? 0.55),
   };
 }
 

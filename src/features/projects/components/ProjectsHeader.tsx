@@ -166,7 +166,7 @@ export function ProjectsHeader() {
               <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderBottom: "1px solid #29293D" }}>
                 {[
                   { label: "Creative Credits", value: String(entitlements?.usage.creativeCreditsRemaining ?? (user as any)?.credits ?? 0) },
-                  { label: "Projects", value: entitlements ? `${entitlements.usage.projects}/${entitlements.limits.projects ?? "∞"}` : "—" },
+                  { label: "Processing Frames", value: entitlements ? new Intl.NumberFormat("en-US").format(entitlements.usage.processingFramesRemaining) : "—" },
                   { label: "Member", value: user?.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—" },
                 ].map((item) => (
                   <div key={item.label} style={{ flex: 1, background: "#0F0F19", border: "1px solid #26263A", borderRadius: 8, padding: "8px 6px", textAlign: "center" }}>

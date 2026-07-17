@@ -24,14 +24,14 @@ test('usage remaining subtracts used and reserved quota', () => {
 test('public plan serialization exposes market quota fields', () => {
   const plan = serializePlan({
     code: 'pro', name: 'Pro Beta', description: 'x', price_vnd: 499000,
-    duration_days: 30, credits_grant: 200, project_limit: 50,
-    processing_frame_limit: 1000, creative_credit_limit: 200,
-    creative_daily_limit: 30, creative_concurrent_limit: 2,
+    duration_days: 30, credits_grant: 500, project_limit: 50,
+    processing_frame_limit: 2000, creative_credit_limit: 500,
+    creative_daily_limit: 40, creative_concurrent_limit: 2,
     priority_queue: true, high_quality_export: true, version_history_days: 30,
-    features: ['a'], sort_order: 20,
+    features: ['2,000 Processing Frames/month', '500 Creative Credits/month'], sort_order: 20,
   });
-  assert.equal(plan.processingFrameLimit, 1000);
-  assert.equal(plan.creativeCreditLimit, 200);
-  assert.equal(plan.projectLimit, 50);
+  assert.equal(plan.processingFrameLimit, 2000);
+  assert.equal(plan.creativeCreditLimit, 500);
+  assert.equal(plan.features.some((feature) => /project/i.test(feature)), false);
   assert.equal(plan.priceVnd, 499000);
 });

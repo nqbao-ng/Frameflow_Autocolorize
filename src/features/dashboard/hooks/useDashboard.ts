@@ -128,6 +128,8 @@ export function useDashboard() {
   const [framePaints, setFramePaints] = useState<Record<number, string>>({});
   const [undoStack, setUndoStack] = useState<Record<number, string[]>>({});
   const [redoStack, setRedoStack] = useState<Record<number, string[]>>({});
+  const [dirtyFrames, setDirtyFrames] = useState<Set<number>>(() => new Set());
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [paintableFrames, setPaintableFrames] = useState<Set<number>>(new Set());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -225,6 +227,25 @@ export function useDashboard() {
     });
   }, [activeFrame]);
 
+  useEffect(() => {
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      if (dirtyFrames.size === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeave);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeave);
+  }, [dirtyFrames]);
+
+  const markCurrentFrameDirty = useCallback(() => {
+    setDirtyFrames((current) => {
+      const next = new Set(current);
+      next.add(activeFrame);
+      return next;
+    });
+    setSaveStatus("idle");
+  }, [activeFrame]);
+
   // ── Frame save/restore ─────────────────────────────────────────────────────
   const saveCurrentFrame = useCallback(() => {
     // Keep only the editable paint/color layer in local state.
@@ -238,6 +259,7 @@ export function useDashboard() {
     saveCurrentFrame();
     setShowReferencePreview(false);
     setActiveFrame(idx);
+    setSaveStatus("idle");
     setIsPlaying(false);
   };
 
@@ -274,19 +296,30 @@ export function useDashboard() {
       return next;
     });
     saveCurrentFrame();
-  }, [activeFrame, saveCurrentFrame]);
+    markCurrentFrameDirty();
+  }, [activeFrame, markCurrentFrameDirty, saveCurrentFrame]);
 
   const handleSaveCurrentFrame = useCallback(async (): Promise<string | null> => {
     try {
-      if (!projectId) return null;
+      setSaveStatus("saving");
+      if (!projectId) {
+        setSaveStatus("error");
+        return null;
+      }
 
       const frame = uncoloredFiles[activeFrame];
-      if (!frame) return null;
+      if (!frame) {
+        setSaveStatus("error");
+        return null;
+      }
 
       // Merge all layers (colorRef + bgRef + canvasRef) before uploading.
       // Review/Correction uses this as the actual corrected keyframe image.
       const blob = await paintCanvasRef.current?.getFlattenedBlob() ?? null;
-      if (!blob) return null;
+      if (!blob) {
+        setSaveStatus("error");
+        return null;
+      }
 
       const coloredUrl = await uploadColoredFrame(blob, projectId, frame.id);
 
@@ -297,10 +330,17 @@ export function useDashboard() {
           index === activeFrame ? { ...item, paintUrl: coloredUrl } : item,
         ),
       );
+      setDirtyFrames((current) => {
+        const next = new Set(current);
+        next.delete(activeFrame);
+        return next;
+      });
+      setSaveStatus("saved");
 
       return coloredUrl;
     } catch (error) {
       console.error("SAVE FRAME ERROR:", error);
+      setSaveStatus("error");
       addToast("❌ Lỗi khi lưu correction keyframe", "error");
       return null;
     }
@@ -381,13 +421,14 @@ export function useDashboard() {
       return next;
     });
     saveCurrentFrame();
+    markCurrentFrameDirty();
     addToast(
       `🎨 Đã recolor segment ${pickedSegmentId}${roleId ? ` (${roleId})` : ""}`,
       "success",
       3000,
     );
     return true;
-  }, [activeFrame, addToast, opacity, pushUndoSnapshot, saveCurrentFrame, selectedSegmentId]);
+  }, [activeFrame, addToast, markCurrentFrameDirty, opacity, pushUndoSnapshot, saveCurrentFrame, selectedSegmentId]);
 
   const handleUndo = useCallback(() => {
     const stack = undoStack[activeFrame] || [];
@@ -415,7 +456,8 @@ export function useDashboard() {
       img.src = target;
       setUndoStack((s) => ({ ...s, [activeFrame]: stack.slice(0, -1) }));
     }
-  }, [activeFrame, undoStack]);
+    markCurrentFrameDirty();
+  }, [activeFrame, markCurrentFrameDirty, undoStack]);
 
   const handleRedo = useCallback(() => {
     const stack = redoStack[activeFrame] || [];
@@ -441,7 +483,8 @@ export function useDashboard() {
     };
     img.src = target;
     setRedoStack((s) => ({ ...s, [activeFrame]: stack.slice(0, -1) }));
-  }, [activeFrame, redoStack]);
+    markCurrentFrameDirty();
+  }, [activeFrame, markCurrentFrameDirty, redoStack]);
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -1205,6 +1248,15 @@ const handleCustomColoredUpload = async (
         });
         return reindexed;
       });
+      setDirtyFrames((prev) => {
+        const reindexed = new Set<number>();
+        prev.forEach((idx) => {
+          if (idx > frameIndex) reindexed.add(idx - 1);
+          else if (idx < frameIndex) reindexed.add(idx);
+        });
+        return reindexed;
+      });
+      setSaveStatus("idle");
       if (activeFrame >= frameIndex && activeFrame > 0) {
         setActiveFrame(activeFrame - 1);
       } else if (activeFrame === frameIndex && uncoloredFiles.length > 1) {
@@ -1391,6 +1443,8 @@ const handleCustomColoredUpload = async (
     contextMenu, setContextMenu,
     undoStack, redoStack,
     framePaints,
+    saveStatus,
+    isCurrentFrameDirty: dirtyFrames.has(activeFrame),
 
     // Tool state
     activeTool, setActiveTool,

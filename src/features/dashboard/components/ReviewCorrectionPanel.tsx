@@ -5,6 +5,7 @@ import {
   Eye,
   Layers,
   MousePointer2,
+  PaintBucket,
   Palette,
   Pipette,
   RefreshCw,
@@ -217,6 +218,27 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
     }
   }
 
+  async function handleRetryReviewData() {
+    try {
+      setLoading(true);
+      const nextReview = await loadFrameReview();
+      if (nextReview?.segments?.length) {
+        addToast("✅ Editable regions were rebuilt for this frame", "success", 4500);
+      } else {
+        addToast("No editable regions were detected. Use the edge-aware Fill tool, then save as a correction keyframe.", "info", 6500);
+      }
+    } catch (error) {
+      addToast(`❌ Could not rebuild review data: ${(error as Error).message}`, "error", 6500);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleUseEdgeFill() {
+    setActiveTool("fill");
+    addToast("Fill tool selected. It now underpaints soft line edges to remove white halos.", "info", 5500);
+  }
+
   function handleUseColor() {
     setActiveColor(selectedColor);
     addToast("🎨 Màu đã được đưa sang Brush/Fill", "info", 3500);
@@ -345,7 +367,24 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
         </div>
         <div style={{ padding: "0 12px 12px" }}>
           <div style={{ fontSize: 10, color: "#AAB2D5", background: "#181827", border: "1px solid #2A2A40", borderRadius: 8, padding: 8, lineHeight: 1.45, marginBottom: 8 }}>
-            {review?.segment_analysis_message || "Segment analysis is unavailable for this frame. Edit with Brush/Fill, then save it as a correction keyframe to continue the sequence."}
+            {review?.segment_analysis_message || "We could not rebuild editable regions for this frame. Retry the review data, or correct it with edge-aware Brush/Fill and continue."}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 7 }}>
+            <button
+              type="button"
+              onClick={handleRetryReviewData}
+              disabled={loading || reviewLoading}
+              style={{ ...S.button, background: "rgba(139,92,246,0.12)", color: "#C4B5FD", border: "1px solid rgba(139,92,246,0.35)" }}
+            >
+              <RefreshCw size={11} /> {loading || reviewLoading ? "Retrying…" : "Retry Regions"}
+            </button>
+            <button
+              type="button"
+              onClick={handleUseEdgeFill}
+              style={{ ...S.button, background: "rgba(59,130,246,0.12)", color: "#93C5FD", border: "1px solid rgba(59,130,246,0.35)" }}
+            >
+              <PaintBucket size={11} /> Use Edge Fill
+            </button>
           </div>
           <button
             type="button"

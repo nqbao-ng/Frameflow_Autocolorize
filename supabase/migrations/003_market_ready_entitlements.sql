@@ -191,20 +191,20 @@ insert into public.billing_plans (
   (
     'trial', 'Pro Trial', 'Three-day full-feature trial for new accounts', 0, 3, 50,
     2, 10, 1, 5,
-    '["2 active projects", "100 Processing Frames total", "50 Creative Credits", "Full Pro workflow for 3 days", "High-quality export"]'::jsonb,
+    '["100 Processing Frames total", "50 Creative Credits", "Full Pro workflow for 3 days", "High-quality export"]'::jsonb,
     true, 100, 50, 3, false, false, true, 7, now(), now()
   ),
   (
     'free', 'Free', 'For learning the core FrameFlow workflow', 0, 0, 5,
     2, 5, 1, 10,
-    '["2 active projects", "50 Processing Frames/month", "5 Creative Credits/month", "Auto Color and manual correction", "PNG and ZIP export"]'::jsonb,
+    '["50 Processing Frames/month", "5 Creative Credits/month", "Auto Color and manual correction", "PNG and ZIP export"]'::jsonb,
     true, 50, 5, 0, true, false, false, 3, now(), now()
   ),
   (
-    'pro', 'Pro Beta', 'For individual artists and frequent animation work', 499000, 30, 200,
-    50, 30, 2, 20,
-    '["50 active projects", "1,000 Processing Frames/month", "200 Creative Credits/month", "2 concurrent Creative Studio jobs", "Priority processing", "High-quality export", "30-day version history"]'::jsonb,
-    true, 1000, 200, 0, true, true, true, 30, now(), now()
+    'pro', 'Pro Beta', 'For individual artists and frequent animation work', 499000, 30, 500,
+    50, 40, 2, 20,
+    '["2,000 Processing Frames/month", "500 Creative Credits/month", "2 concurrent Creative Studio jobs", "Priority processing", "High-quality export", "30-day version history"]'::jsonb,
+    true, 2000, 500, 0, true, true, true, 30, now(), now()
   )
 on conflict (code) do update set
   name = excluded.name,

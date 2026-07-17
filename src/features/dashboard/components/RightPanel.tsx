@@ -219,7 +219,7 @@ export function RightPanel({ ctx }: RightPanelProps) {
                     <div>
                       <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>Fill Preview</div>
                       <div style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.9)" }}>{activeColor.toUpperCase()} · {opacity}% opacity</div>
-                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>Tolerance {fillTolerance} · Gap close {gapClose ? "ON" : "OFF"}</div>
+                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>Tolerance {fillTolerance} · Edge close {gapClose ? "ON" : "OFF"}</div>
                     </div>
                   </div>
                   <Slider label="Opacity" value={opacity} onChange={setOpacity} />
@@ -229,13 +229,13 @@ export function RightPanel({ ctx }: RightPanelProps) {
                       <strong style={{ color: "#AAB2D5" }}>Tolerance</strong> — how similar a pixel's color must be to get filled.
                     </div>
                     <div style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.5 }}>
-                      <strong style={{ color: "#AAB2D5" }}>Gap Close</strong> — seals hairline gaps so fill can't bleed through thin outlines.
+                      <strong style={{ color: "#AAB2D5" }}>Edge-aware fill</strong> — seals hairline gaps and underpaints soft anti-aliased edges to remove white halos.
                     </div>
                   </div>
                   <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${gapClose ? "#A855F7" : "#2A2A40"}`, background: gapClose ? "rgba(124,58,237,0.14)" : "#181827", transition: "all 0.15s" }}>
                     <div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: gapClose ? "#C084FC" : "#AAB2D5" }}>Gap Closing</div>
-                      <div style={{ fontSize: 9, color: "#7E86A4", marginTop: 1 }}>Prevent bleed through thin lines</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: gapClose ? "#C084FC" : "#AAB2D5" }}>Edge-aware Fill</div>
+                      <div style={{ fontSize: 9, color: "#7E86A4", marginTop: 1 }}>Reach the line edge without leaking</div>
                     </div>
                     <div onClick={() => setGapClose(!gapClose)} style={{ width: 32, height: 18, borderRadius: 9, background: gapClose ? "#A855F7" : "#3A3A52", position: "relative", flexShrink: 0, transition: "background 0.2s", cursor: "pointer" }}>
                       <div style={{ position: "absolute", top: 2, left: gapClose ? 16 : 2, width: 14, height: 14, borderRadius: "50%", background: "#181827", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s" }} />

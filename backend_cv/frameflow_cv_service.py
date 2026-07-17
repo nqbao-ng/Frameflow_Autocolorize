@@ -100,6 +100,8 @@ class AnalyzeSettings(BaseModel):
     gap_close_kernel: int = 3
     gap_close_iterations: int = 1
     line_dilate: int = 1
+    edge_fill_radius: int = 4
+    color_sample_erode: int = 1
     min_segment_area: int = 25
     max_side: int = 0
     low_confidence_threshold: float = 0.55
@@ -329,6 +331,49 @@ def extract_line_masks(
     return gray, raw_u8 > 0, boundary > 0
 
 
+def expand_labels_to_line(
+    labels: np.ndarray,
+    line_mask_raw: np.ndarray,
+    max_radius: int,
+) -> np.ndarray:
+    """Expand connected-component labels into the temporary boundary band.
+
+    Segmentation intentionally dilates/closes lineart to prevent leaks. Without
+    this reconstruction step, rendered color stops at the dilated mask while the
+    visible line uses the original thinner mask, producing a white halo. The
+    nearest-component distance map fills only the non-line boundary pixels, so
+    colors reach underneath anti-aliased line edges without merging segments.
+    """
+    radius = max(0, int(max_radius))
+    if radius <= 0 or not np.any(labels > 0):
+        return labels.astype(np.int32, copy=True)
+
+    seed_binary = np.where(labels > 0, 0, 1).astype(np.uint8)
+    distance, nearest_components = cv2.distanceTransformWithLabels(
+        seed_binary,
+        cv2.DIST_L2,
+        5,
+        labelType=cv2.DIST_LABEL_CCOMP,
+    )
+
+    component_to_segment = np.zeros(int(nearest_components.max()) + 1, dtype=np.int32)
+    seed_mask = labels > 0
+    component_to_segment[nearest_components[seed_mask]] = labels[seed_mask]
+
+    expanded = labels.astype(np.int32, copy=True)
+    # Also assign pixels beneath the original line. The visible line is alpha-
+    # composited later, so this underpaint removes anti-aliased white fringes.
+    # This does not merge regions because component extraction is already done.
+    candidate = (expanded == 0) & (distance <= float(radius))
+    nearest = nearest_components[candidate]
+    valid = nearest > 0
+    if np.any(valid):
+        values = np.zeros(nearest.shape, dtype=np.int32)
+        values[valid] = component_to_segment[nearest[valid]]
+        expanded[candidate] = values
+    return expanded
+
+
 def compute_hu(mask: np.ndarray) -> List[float]:
     m = cv2.moments(mask.astype(np.uint8))
     hu = cv2.HuMoments(m).flatten()
@@ -395,7 +440,8 @@ def analyze_line_rgb(rgb: np.ndarray, cfg: AnalyzeSettings, frame_name: str = "f
             )
         )
 
-    return FrameAnalysis(frame_name, w, h, rgb, gray, line_raw, line_boundary, labels.astype(np.int32), segments)
+    labels = expand_labels_to_line(labels.astype(np.int32), line_raw, cfg.edge_fill_radius)
+    return FrameAnalysis(frame_name, w, h, rgb, gray, line_raw, line_boundary, labels, segments)
 
 # -----------------------------------------------------------------------------
 # Color extraction / rendering
@@ -406,19 +452,34 @@ def dominant_segment_color(color_rgb: np.ndarray, mask: np.ndarray) -> Tuple[int
     pixels = color_rgb[mask]
     if pixels.size == 0:
         return (255, 255, 255)
+
+    # Ignore very dark line contamination, then estimate the dominant quantized
+    # color instead of averaging unrelated colors inside a segment.
     gray = cv2.cvtColor(pixels.reshape(-1, 1, 3).astype(np.uint8), cv2.COLOR_RGB2GRAY).reshape(-1)
-    usable = pixels[gray > 25]
+    usable = pixels[gray > 28]
     if len(usable) == 0:
         usable = pixels
-    med = np.median(usable, axis=0)
+    quantized = (usable // 12).astype(np.int16)
+    keys, counts = np.unique(quantized, axis=0, return_counts=True)
+    dominant_key = keys[int(np.argmax(counts))]
+    dominant_pixels = usable[np.all(quantized == dominant_key, axis=1)]
+    sample = dominant_pixels if len(dominant_pixels) >= 3 else usable
+    med = np.median(sample, axis=0)
     return tuple(np.clip(np.round(med), 0, 255).astype(int).tolist())
 
 
-def extract_keyframe_colors(analysis: FrameAnalysis, color_rgb: np.ndarray) -> Dict[int, Tuple[int, int, int]]:
+def extract_keyframe_colors(analysis: FrameAnalysis, color_rgb: np.ndarray, erode_pixels: int = 1) -> Dict[int, Tuple[int, int, int]]:
     color_rgb = resize_like(color_rgb, (analysis.height, analysis.width))
     colors: Dict[int, Tuple[int, int, int]] = {}
+    erode = max(0, int(erode_pixels))
+    kernel = np.ones((3, 3), np.uint8)
     for seg in analysis.segments:
-        colors[seg.segment_id] = dominant_segment_color(color_rgb, analysis.labels == seg.segment_id)
+        mask = analysis.labels == seg.segment_id
+        if erode > 0 and int(mask.sum()) > 16:
+            interior = cv2.erode(mask.astype(np.uint8), kernel, iterations=erode) > 0
+            if int(interior.sum()) >= 4:
+                mask = interior
+        colors[seg.segment_id] = dominant_segment_color(color_rgb, mask)
     return colors
 
 
@@ -426,10 +487,20 @@ def render_colorized(a: FrameAnalysis, colors: Dict[int, Tuple[int, int, int]], 
     out = np.zeros((a.height, a.width, 3), dtype=np.uint8) + 255
     for sid, color in colors.items():
         out[a.labels == int(sid)] = np.array(color, dtype=np.uint8)
-    if line_mode == "black":
-        out[a.line_mask_raw] = np.array([0, 0, 0], dtype=np.uint8)
-    else:
-        out[a.line_mask_raw] = a.line_rgb[a.line_mask_raw]
+
+    # Alpha-composite lineart over the color instead of replacing anti-aliased
+    # pixels with their original near-white RGB values. This is the second half
+    # of the white-halo fix and keeps the original stroke character intact.
+    mask = a.line_mask_raw
+    if np.any(mask):
+        alpha = np.clip((250.0 - a.gray.astype(np.float32)) / 220.0, 0.0, 1.0)[..., None]
+        if line_mode == "black":
+            line_rgb = np.zeros_like(a.line_rgb, dtype=np.float32)
+        else:
+            line_rgb = a.line_rgb.astype(np.float32)
+        base = out.astype(np.float32)
+        blended = base * (1.0 - alpha) + line_rgb * alpha
+        out[mask] = np.clip(blended[mask], 0, 255).astype(np.uint8)
     return out
 
 
@@ -556,14 +627,25 @@ def propagate_colors(prev: FrameAnalysis, prev_colors: Dict[int, Tuple[int, int,
                 if not candidates:
                     continue
                 best_prev, best_count = max(candidates, key=lambda x: x[1])
-                ratio = float(best_count / max(1, seg.area))
-                if ratio >= cfg.flow_min_ratio:
+                total_valid = max(1, sum(count for _, count in candidates))
+                coverage = float(total_valid / max(1, seg.area))
+                purity = float(best_count / total_valid)
+                matched_seg = prev_seg_by_id.get(best_prev)
+                compatibility = 0.0
+                if matched_seg is not None:
+                    compatibility = float(math.exp(-1.75 * feature_cost(matched_seg, seg, curr.width, curr.height)))
+                score = 0.50 * min(1.0, coverage) + 0.35 * purity + 0.15 * compatibility
+                # Coverage alone can be misleading around thin moving parts. Require
+                # a real majority before accepting the optical-flow transfer.
+                if coverage >= cfg.flow_min_ratio and purity >= 0.50:
                     colors[seg.segment_id] = prev_colors[best_prev]
-                    confidence[seg.segment_id] = min(0.98, max(0.05, ratio))
+                    confidence[seg.segment_id] = min(0.98, max(0.05, score))
                     match_info[seg.segment_id] = {
                         "method": "optical_flow_majority",
                         "matched_prev_segment": best_prev,
-                        "flow_ratio": round(ratio, 4),
+                        "flow_coverage": round(coverage, 4),
+                        "flow_purity": round(purity, 4),
+                        "feature_compatibility": round(compatibility, 4),
                     }
         except Exception as e:
             match_info[-1] = {"flow_error": str(e)}
@@ -757,7 +839,7 @@ def colorize_frame(req: ColorizeFrameRequest, x_frameflow_key: Optional[str] = H
         ref_color_rgb = resize_like(ref_color_rgb, (curr_analysis.height, curr_analysis.width))
 
         ref_analysis = analyze_line_rgb(ref_line_rgb, cfg, frame_name="reference.png", target_hw=(curr_analysis.height, curr_analysis.width))
-        ref_colors = extract_keyframe_colors(ref_analysis, ref_color_rgb)
+        ref_colors = extract_keyframe_colors(ref_analysis, ref_color_rgb, cfg.color_sample_erode)
 
         colors, conf, match = propagate_colors(ref_analysis, ref_colors, curr_analysis, cfg)
         apply_role_memory_hints(curr_analysis, colors, conf, match, req.role_memory, cfg)

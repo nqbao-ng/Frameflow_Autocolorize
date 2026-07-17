@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import type { useDashboard } from "../hooks/useDashboard";
 import { BrandLogo } from "@/shared/components/BrandLogo";
+import { useEntitlements } from "@/features/account/hooks/useEntitlements";
 
 type DashboardCtx = ReturnType<typeof useDashboard>;
 
@@ -14,6 +15,7 @@ interface LeftSidebarProps {
 }
 
 export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
+  const { entitlements } = useEntitlements();
   const {
     uncoloredFiles, activeFrame, frameStates, frameRefMap, framePaints,
     referenceImage, detachedReferenceFrameId,
@@ -198,16 +200,29 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
         </button>
       </div>
 
-      {/* Upgrade card */}
+      {/* Contextual plan card — Processing Frames are the primary quota. */}
       <div style={{ padding: "0 10px 12px", flexShrink: 0 }}>
-        <a href="/#pricing" style={{ display: "block", background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", borderRadius: 12, padding: "12px", textDecoration: "none" }}>
-          <Crown size={15} color="#F59E0B" style={{ marginBottom: 4 }} />
-          <p style={{ fontSize: 11, fontWeight: 700, color: "white", marginBottom: 2 }}>Upgrade to Pro</p>
-          <p style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.5, marginBottom: 8 }}>Higher limits and faster processing.</p>
-          <div style={{ width: "100%", padding: "6px", borderRadius: 6, background: "#F59E0B", textAlign: "center", color: "#F5F3FF", fontWeight: 700, fontSize: 10 }}>
-            See Pro Plans →
+        <Link
+          to={`/settings?tab=billing${entitlements?.plan.code === "pro" ? "" : "&plan=pro"}`}
+          style={{ display: "block", background: "linear-gradient(135deg,#26164A,#3A153C)", border: "1px solid rgba(192,132,252,.35)", borderRadius: 12, padding: "11px", textDecoration: "none" }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Crown size={14} color="#F59E0B" />
+              <span style={{ fontSize: 9, fontWeight: 800, color: "#C4B5FD", letterSpacing: .7 }}>
+                {entitlements?.plan.code === "trial" ? "PRO TRIAL" : `${entitlements?.plan.name || "FREE"}`.toUpperCase()}
+              </span>
+            </div>
+            <span style={{ fontSize: 8, color: "#AAB2D5" }}>monthly</span>
           </div>
-        </a>
+          <p style={{ fontSize: 18, lineHeight: 1, fontWeight: 850, color: "white", margin: "9px 0 3px" }}>
+            {entitlements ? new Intl.NumberFormat("en-US").format(entitlements.usage.processingFramesRemaining) : "—"}
+          </p>
+          <p style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.45, margin: "0 0 8px" }}>Processing Frames remaining</p>
+          <div style={{ width: "100%", padding: "6px", borderRadius: 7, background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", textAlign: "center", color: "white", fontWeight: 800, fontSize: 9 }}>
+            {entitlements?.plan.code === "pro" ? "Manage Plan" : entitlements?.plan.code === "trial" ? "Keep Pro" : "Upgrade to Pro"} →
+          </div>
+        </Link>
       </div>
     </aside>
   );

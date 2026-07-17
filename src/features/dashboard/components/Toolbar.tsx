@@ -64,6 +64,8 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
     handleUndo,
     handleRedo,
     handleSaveCurrentFrame,
+    saveStatus,
+    isCurrentFrameDirty,
     handleCorrectionKeyframeAndRecolorNextFrames,
     uncoloredFiles,
     frameStates,
@@ -157,20 +159,23 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
 
         {/* Save */}
         <button
-          onClick={handleSaveCurrentFrame}
+          onClick={() => void handleSaveCurrentFrame()}
+          disabled={saveStatus === "saving"}
+          title={isCurrentFrameDirty ? "Save changes to this frame" : "This frame has no unsaved edits"}
           style={{
             ...baseBtn,
             border: "none",
-            background: "#10B981",
+            background: saveStatus === "error" ? "#DC2626" : isCurrentFrameDirty ? "#10B981" : "#334155",
             color: "white",
             fontWeight: 700,
             padding: "5px 12px",
             gap: 5,
-            boxShadow: "0 2px 8px rgba(16,185,129,0.25)",
+            boxShadow: isCurrentFrameDirty ? "0 2px 8px rgba(16,185,129,0.25)" : "none",
+            cursor: saveStatus === "saving" ? "wait" : "pointer",
           }}
         >
-          <Save size={11} />
-          Save
+          {saveStatus === "saving" ? <RefreshCw size={11} className="animate-spin" /> : <Save size={11} />}
+          {saveStatus === "saving" ? "Saving…" : saveStatus === "error" ? "Retry Save" : saveStatus === "saved" && !isCurrentFrameDirty ? "Saved" : isCurrentFrameDirty ? "Save*" : "Save"}
         </button>
 
          <div style={divider} />

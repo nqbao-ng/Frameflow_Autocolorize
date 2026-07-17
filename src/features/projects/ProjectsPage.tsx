@@ -38,7 +38,7 @@ export function ProjectsPage() {
     handleCreateProject, handleRename, handleDelete,
     renameModalId, renameInputValue, setRenameInputValue, isRenaming,
     openRenameModal, closeRenameModal, submitRename,
-    entitlements, entitlementsLoading, canCreateProject, projectLimit,
+    entitlements, entitlementsLoading, canCreateProject,
   } = ctx;
 
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
@@ -280,7 +280,7 @@ export function ProjectsPage() {
             style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}
             onClick={() => setOpenMenuId(null)}
           >
-            <NewProjectCard onClick={openNewModal} disabled={!canCreateProject} limitMessage={`You are using ${projects.length} of ${projectLimit ?? "unlimited"} active projects. Upgrade or delete a project to continue.`} />
+            <NewProjectCard onClick={openNewModal} disabled={!canCreateProject} limitMessage="This workspace has reached its active-project allowance. Upgrade or archive an older project to continue; Processing Frames remain your main monthly quota." />
 
             {sortedProjects.map((project) => {
               const realFrameCount = project.frames || 0;
