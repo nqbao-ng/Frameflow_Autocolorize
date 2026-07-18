@@ -204,29 +204,49 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
         </button>
       </div>
 
-      {/* Contextual plan card — Processing Frames are the primary quota. */}
+      {/* Plan status — Pro stays compact; Free/Trial keeps the upgrade card. */}
       <div style={{ padding: "0 10px 12px", flexShrink: 0 }}>
-        <Link
-          to={`/settings?tab=billing${entitlements?.plan.code === "pro" ? "" : "&plan=pro"}`}
-          style={{ display: "block", background: "linear-gradient(135deg,#26164A,#3A153C)", border: "1px solid rgba(192,132,252,.35)", borderRadius: 12, padding: "11px", textDecoration: "none" }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Crown size={14} color="#F59E0B" />
-              <span style={{ fontSize: 9, fontWeight: 800, color: "#C4B5FD", letterSpacing: .7 }}>
-                {entitlements?.plan.code === "trial" ? "PRO TRIAL" : `${entitlements?.plan.name || "FREE"}`.toUpperCase()}
-              </span>
+        {entitlements?.plan.code === "pro" ? (
+          <div
+            aria-label="Pro plan active"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 9px",
+              borderRadius: 999,
+              background: "rgba(124,58,237,0.12)",
+              border: "1px solid rgba(192,132,252,0.32)",
+              color: "#DDD6FE",
+            }}
+          >
+            <Crown size={12} color="#F59E0B" />
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.7 }}>PRO</span>
+            <span style={{ fontSize: 8, color: "#AAB2D5" }}>· Active</span>
+          </div>
+        ) : (
+          <Link
+            to="/settings?tab=billing&plan=pro"
+            style={{ display: "block", background: "linear-gradient(135deg,#26164A,#3A153C)", border: "1px solid rgba(192,132,252,.35)", borderRadius: 12, padding: "11px", textDecoration: "none" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Crown size={14} color="#F59E0B" />
+                <span style={{ fontSize: 9, fontWeight: 800, color: "#C4B5FD", letterSpacing: .7 }}>
+                  {entitlements?.plan.code === "trial" ? "PRO TRIAL" : `${entitlements?.plan.name || "FREE"}`.toUpperCase()}
+                </span>
+              </div>
+              <span style={{ fontSize: 8, color: "#AAB2D5" }}>monthly</span>
             </div>
-            <span style={{ fontSize: 8, color: "#AAB2D5" }}>monthly</span>
-          </div>
-          <p style={{ fontSize: 18, lineHeight: 1, fontWeight: 850, color: "white", margin: "9px 0 3px" }}>
-            {entitlements ? new Intl.NumberFormat("en-US").format(entitlements.usage.processingFramesRemaining) : "—"}
-          </p>
-          <p style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.45, margin: "0 0 8px" }}>Processing Frames remaining</p>
-          <div style={{ width: "100%", padding: "6px", borderRadius: 7, background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", textAlign: "center", color: "white", fontWeight: 800, fontSize: 9 }}>
-            {entitlements?.plan.code === "pro" ? "Manage Plan" : entitlements?.plan.code === "trial" ? "Keep Pro" : "Upgrade to Pro"} →
-          </div>
-        </Link>
+            <p style={{ fontSize: 18, lineHeight: 1, fontWeight: 850, color: "white", margin: "9px 0 3px" }}>
+              {entitlements ? new Intl.NumberFormat("en-US").format(entitlements.usage.processingFramesRemaining) : "—"}
+            </p>
+            <p style={{ fontSize: 9, color: "#AAB2D5", lineHeight: 1.45, margin: "0 0 8px" }}>Processing Frames remaining</p>
+            <div style={{ width: "100%", padding: "6px", borderRadius: 7, background: "linear-gradient(135deg,#7C3AED,#FF2E9A)", textAlign: "center", color: "white", fontWeight: 800, fontSize: 9 }}>
+              {entitlements?.plan.code === "trial" ? "Keep Pro" : "Upgrade to Pro"} →
+            </div>
+          </Link>
+        )}
       </div>
     </aside>
   );
