@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { useDashboard } from "../hooks/useDashboard";
 import { ROLE_PRESETS } from "../constants/rolePresets";
+import { ActivityDots } from "./ActivityDots";
 import {
   applyFrameCorrection,
   cancelColorizationJob,
@@ -107,10 +108,12 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
     showLowConfidenceOverlay,
     setShowLowConfidenceOverlay,
     handleCorrectionKeyframeAndRecolorNextFrames,
+    isColoring,
   } = ctx;
 
   const currentFrame = uncoloredFiles[activeFrame];
   const [loading, setLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState<"cancel" | "suggest" | "retry" | null>(null);
   const [applying, setApplying] = useState(false);
   const [selectedRole, setSelectedRole] = useState("unknown");
   const [selectedColor, setSelectedColor] = useState(activeColor || "#3B82F6");
@@ -139,6 +142,10 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
 
   const visibleReason = review?.reason?.trim() === "Lineart-preserving CV propagation completed." ? "" : review?.reason;
   const hasSegments = Boolean(review?.segments?.length);
+  const lowConfidenceCount = review?.segments?.filter((segment) => (segment.confidence ?? 1) < 0.55).length ?? 0;
+  const hasLowConfidenceOverlay = Boolean(
+    review?.job_frame?.low_confidence_overlay_url && lowConfidenceCount > 0,
+  );
 
 
   if (!currentNeedsReview && reviewFrameId && reviewFrameId !== currentFrame.id) {
@@ -166,6 +173,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
               style={{ ...S.button, background: "rgba(244,63,94,0.12)", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
             >
               <XCircle size={11} /> Cancel
+              {loadingAction === "cancel" && <ActivityDots label="Cancelling sequence" />}
             </button>
           </div>
         </div>
@@ -178,16 +186,17 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
     if (!window.confirm("Cancel this colorization sequence? Unused Processing Frames will be returned.")) return;
     try {
       setLoading(true);
-      const result = await cancelColorizationJob({ projectId, jobId: review.job.id });
+      setLoadingAction("cancel");
+      await cancelColorizationJob({ projectId, jobId: review.job.id });
       setSelectedSegmentId(null);
       setSegmentPickMode(false);
       await refreshFrames();
       await loadFrameReview();
-      addToast(`✅ ${result.message}`, "success", 6000);
     } catch (error) {
       addToast(`❌ ${(error as Error).message}`, "error", 7000);
     } finally {
       setLoading(false);
+      setLoadingAction(null);
     }
   }
 
@@ -199,6 +208,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
 
     try {
       setLoading(true);
+      setLoadingAction("suggest");
       const data = await getVisionSuggestion({
         projectId,
         jobId: review.job.id,
@@ -209,45 +219,39 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
       setSelectedRole(data.suggestion.role_id || "unknown");
       setSelectedColor(data.suggestion.color_hex || selectedColor);
       setActiveColor(data.suggestion.color_hex || selectedColor);
-      addToast("✅ Vision AI đã gợi ý role/màu cho segment", "success");
     } catch (error) {
       console.error("VISION SUGGEST ERROR:", error);
       addToast(`❌ Lỗi Vision AI Suggest: ${(error as Error).message}`, "error", 6000);
     } finally {
       setLoading(false);
+      setLoadingAction(null);
     }
   }
 
   async function handleRetryReviewData() {
     try {
       setLoading(true);
-      const nextReview = await loadFrameReview();
-      if (nextReview?.segments?.length) {
-        addToast("✅ Editable regions were rebuilt for this frame", "success", 4500);
-      } else {
-        addToast("No editable regions were detected. Use the edge-aware Fill tool, then save as a correction keyframe.", "info", 6500);
-      }
+      setLoadingAction("retry");
+      await loadFrameReview();
     } catch (error) {
       addToast(`❌ Could not rebuild review data: ${(error as Error).message}`, "error", 6500);
     } finally {
       setLoading(false);
+      setLoadingAction(null);
     }
   }
 
   function handleUseEdgeFill() {
     setActiveTool("fill");
-    addToast("Fill tool selected. It now underpaints soft line edges to remove white halos.", "info", 5500);
   }
 
   function handleUseColor() {
     setActiveColor(selectedColor);
-    addToast("🎨 Màu đã được đưa sang Brush/Fill", "info", 3500);
   }
 
   function handleMaskRepairMode() {
     setActiveColor(selectedColor);
     setActiveTool("brush");
-    addToast("🧩 Mask repair: dùng Brush/Eraser trên canvas, rồi bấm Apply.", "info", 6000);
   }
 
   async function handleApplyAndContinue() {
@@ -299,7 +303,6 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
       if (applyScope === "segment_only") {
         await refreshFrames();
         await loadFrameReview();
-        addToast("✅ Segment đã được recolor trên frame hiện tại", "success", 6000);
         return;
       }
 
@@ -331,14 +334,6 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
       }
 
       await loadFrameReview();
-
-      if (next.status === "needs_review_not_reference" || next.status === "waiting_review") {
-        addToast("✅ Correction đã lưu. Frame tiếp theo cần review.", "success", 7000);
-      } else if (next.status === "completed") {
-        addToast("✅ Correction đã lưu và sequence hoàn thành", "success", 7000);
-      } else {
-        addToast("✅ Correction đã lưu, hệ thống tiếp tục propagate", "success", 7000);
-      }
     } catch (error) {
       console.error("APPLY CORRECTION ERROR:", error);
       addToast(`❌ Lỗi Apply Correction: ${(error as Error).message}`, "error", 7000);
@@ -376,7 +371,8 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
               disabled={loading || reviewLoading}
               style={{ ...S.button, background: "rgba(139,92,246,0.12)", color: "#C4B5FD", border: "1px solid rgba(139,92,246,0.35)" }}
             >
-              <RefreshCw size={11} /> {loading || reviewLoading ? "Retrying…" : "Retry Regions"}
+              <RefreshCw size={11} /> Retry Regions
+              {loadingAction === "retry" && <ActivityDots label="Rebuilding editable regions" />}
             </button>
             <button
               type="button"
@@ -389,9 +385,11 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           <button
             type="button"
             onClick={handleCorrectionKeyframeAndRecolorNextFrames}
-            style={{ ...S.button, width: "100%", background: "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white" }}
+            disabled={isColoring}
+            style={{ ...S.button, width: "100%", background: isColoring ? "#3A3A52" : "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white" }}
           >
             <CheckCircle2 size={12} /> Correction Keyframe & Continue
+            {isColoring && <ActivityDots label="Propagating correction" />}
           </button>
           {currentNeedsReview && review?.job?.id && (
             <button
@@ -401,6 +399,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
               style={{ ...S.button, width: "100%", marginTop: 6, background: "rgba(244,63,94,0.12)", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
             >
               <XCircle size={11} /> Cancel sequence & return unused frames
+              {loadingAction === "cancel" && <ActivityDots label="Cancelling sequence" />}
             </button>
           )}
         </div>
@@ -461,10 +460,13 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           </button>
           <button
             type="button"
-            onClick={() => setShowLowConfidenceOverlay(!showLowConfidenceOverlay)}
-            style={{ ...S.button, background: showLowConfidenceOverlay ? "rgba(245,158,11,0.16)" : "#181827", color: showLowConfidenceOverlay ? "#FBBF24" : "#AAB2D5", border: "1px solid #2A2A40" }}
+            onClick={() => hasLowConfidenceOverlay && setShowLowConfidenceOverlay(!showLowConfidenceOverlay)}
+            disabled={!hasLowConfidenceOverlay}
+            aria-pressed={showLowConfidenceOverlay}
+            title={hasLowConfidenceOverlay ? "Show only the regions below the confidence threshold" : "No low-confidence overlay is available for this frame"}
+            style={{ ...S.button, background: showLowConfidenceOverlay ? "rgba(245,158,11,0.16)" : "#181827", color: showLowConfidenceOverlay ? "#FBBF24" : "#AAB2D5", border: "1px solid #2A2A40", opacity: hasLowConfidenceOverlay ? 1 : 0.45, cursor: hasLowConfidenceOverlay ? "pointer" : "not-allowed" }}
           >
-            <Layers size={11} /> Low-conf overlay
+            <Layers size={11} /> {hasLowConfidenceOverlay ? `Low-confidence (${lowConfidenceCount})` : "No low-confidence areas"}
           </button>
         </div>
 
@@ -568,6 +570,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
             style={{ ...S.button, background: "rgba(124,58,237,0.15)", color: "#C084FC", border: "1px solid rgba(168,85,247,0.42)" }}
           >
             <Brain size={11} /> Vision AI
+            {loadingAction === "suggest" && <ActivityDots label="Getting Vision AI suggestion" />}
           </button>
         </div>
 
@@ -601,7 +604,8 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
           }}
         >
           <CheckCircle2 size={12} />
-          {applying ? "Applying..." : "Apply Correction & Continue"}
+          Apply Correction & Continue
+          {applying && <ActivityDots label="Applying correction" />}
         </button>
 
         {currentNeedsReview && review?.job?.id && (
@@ -612,6 +616,7 @@ export function ReviewCorrectionPanel({ ctx }: ReviewCorrectionPanelProps) {
             style={{ ...S.button, width: "100%", marginTop: 6, background: "transparent", color: "#FB7185", border: "1px solid rgba(251,113,133,0.35)" }}
           >
             <XCircle size={11} /> Cancel sequence & return unused frames
+            {loadingAction === "cancel" && <ActivityDots label="Cancelling sequence" />}
           </button>
         )}
 

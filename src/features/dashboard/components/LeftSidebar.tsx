@@ -6,6 +6,7 @@ import {
 import type { useDashboard } from "../hooks/useDashboard";
 import { BrandLogo } from "@/shared/components/BrandLogo";
 import { useEntitlements } from "@/features/account/hooks/useEntitlements";
+import { ActivityDots } from "./ActivityDots";
 
 type DashboardCtx = ReturnType<typeof useDashboard>;
 
@@ -160,8 +161,11 @@ export function LeftSidebar({ ctx, projectName }: LeftSidebarProps) {
             <List size={11} color="#64748B" />
           </div>
           <div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: "#F5F3FF" }}>{isImporting ? "Importing..." : "Import Uncolored Files"}</div>
-            <div style={{ fontSize: 8, color: "#94A3B8" }}>{isImporting ? "Please wait" : `${uncoloredFiles.length} loaded`}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: "#F5F3FF", display: "flex", alignItems: "center", gap: 4 }}>
+              Import Uncolored Files
+              {isImporting && <ActivityDots label="Importing frames" />}
+            </div>
+            <div style={{ fontSize: 8, color: "#94A3B8" }}>{uncoloredFiles.length} loaded</div>
           </div>
         </button>
 

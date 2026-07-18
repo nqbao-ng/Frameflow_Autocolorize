@@ -1,4 +1,4 @@
-import { useRef, useEffect, useImperativeHandle, forwardRef } from "react";
+import { useRef, useEffect, useImperativeHandle, forwardRef, useState } from "react";
 import type { Tool, BlendMode } from "../types";
 import { hexToRgb, rgbToHex } from "../utils/colorUtils";
 
@@ -72,6 +72,31 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
   const painting = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
   const pointBuffer = useRef<{ x: number; y: number }[]>([]);
+  const paintLoadVersionRef = useRef(0);
+  const segmentMapLoadVersionRef = useRef(0);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [sourceSize, setSourceSize] = useState({ width: 16, height: 9 });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const updateSize = () => {
+      const rect = container.getBoundingClientRect();
+      setContainerSize({ width: rect.width, height: rect.height });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  const sourceAspect = sourceSize.width / Math.max(1, sourceSize.height);
+  const containerAspect = containerSize.width / Math.max(1, containerSize.height);
+  const fittedStage = containerSize.width > 0 && containerSize.height > 0
+    ? containerAspect > sourceAspect
+      ? { width: containerSize.height * sourceAspect, height: containerSize.height }
+      : { width: containerSize.width, height: containerSize.width / sourceAspect }
+    : null;
 
   const paintTarget = (): HTMLCanvasElement =>
     canvasRef.current!;
@@ -245,7 +270,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     ctx.putImageData(imageData, 0, 0);
   };
 
-  const loadPaintLayer = (url: string | null | undefined) => {
+  const loadPaintLayer = (url: string | null | undefined, loadVersion: number) => {
     const cv = canvasRef.current;
     if (!cv) return;
     const ctx = cv.getContext("2d")!;
@@ -255,20 +280,26 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      ctx.drawImage(img, 0, 0, cv.width, cv.height);
+      if (loadVersion !== paintLoadVersionRef.current) return;
+      const currentCanvas = canvasRef.current;
+      if (!currentCanvas) return;
+      const currentCtx = currentCanvas.getContext("2d")!;
+      currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+      currentCtx.drawImage(img, 0, 0, currentCanvas.width, currentCanvas.height);
     };
     img.src = url;
   };
 
   // ── Load source sketch as transparent lineart layer ───────────────────────
   useEffect(() => {
+    const loadVersion = ++paintLoadVersionRef.current;
     const lineCanvas = bgRef.current;
     if (!lineCanvas) return;
     const lineCtx = lineCanvas.getContext("2d")!;
     if (!imageUrl) {
       const width = lineCanvas.width || 800;
       const height = lineCanvas.height || 600;
+      setSourceSize({ width, height });
       lineCanvas.width = width;
       lineCanvas.height = height;
       if (canvasRef.current) {
@@ -283,8 +314,10 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const W = img.naturalWidth,
-        H = img.naturalHeight;
+      if (loadVersion !== paintLoadVersionRef.current) return;
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+      setSourceSize({ width: W, height: H });
       lineCanvas.width = W;
       lineCanvas.height = H;
       if (canvasRef.current) {
@@ -298,12 +331,13 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
       }
       fillBaseLayer(W, H);
       drawTransparentLineart(img, lineCanvas);
-      loadPaintLayer(paintUrl);
+      loadPaintLayer(paintUrl, loadVersion);
     };
     img.src = imageUrl;
   }, [imageUrl, paintUrl]);
 
   useEffect(() => {
+    const loadVersion = ++segmentMapLoadVersionRef.current;
     if (!segmentMapUrl) {
       segmentMapCanvasRef.current = null;
       segmentHighlightRef.current?.getContext("2d")?.clearRect(
@@ -318,6 +352,7 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
+      if (loadVersion !== segmentMapLoadVersionRef.current) return;
       const cv = canvasRef.current;
       if (!cv) return;
       const mapCanvas = document.createElement("canvas");
@@ -342,23 +377,9 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
   const getPos = (e: React.MouseEvent) => {
     const cv = canvasRef.current!;
     const rect = cv.getBoundingClientRect();
-    const elAspect = rect.width / rect.height,
-      cvAspect = cv.width / cv.height;
-    let renderW: number, renderH: number, offsetX: number, offsetY: number;
-    if (elAspect > cvAspect) {
-      renderH = rect.height;
-      renderW = rect.height * cvAspect;
-      offsetX = (rect.width - renderW) / 2;
-      offsetY = 0;
-    } else {
-      renderW = rect.width;
-      renderH = rect.width / cvAspect;
-      offsetX = 0;
-      offsetY = (rect.height - renderH) / 2;
-    }
     return {
-      x: (e.clientX - rect.left - offsetX) * (cv.width / renderW),
-      y: (e.clientY - rect.top - offsetY) * (cv.height / renderH),
+      x: Math.max(0, Math.min(cv.width - 1, (e.clientX - rect.left) * (cv.width / Math.max(1, rect.width)))),
+      y: Math.max(0, Math.min(cv.height - 1, (e.clientY - rect.top) * (cv.height / Math.max(1, rect.height)))),
     };
   };
 
@@ -884,77 +905,86 @@ export const PaintCanvas = forwardRef<PaintCanvasHandle, PaintCanvasProps>(funct
         borderRadius: 14,
       }}
     >
-       {/* Layer 1 — base color layer */}
-       <canvas
-         ref={colorRef}
-         style={{
-           position: "absolute",
-           inset: 0,
-           width: "100%",
-           height: "100%",
-           objectFit: "contain",
-           zIndex: 1,
-           pointerEvents: "none",
-         }}
-       />
-      {/* Layer 2 — editable AI/manual color layer + event receiver */}
-      <canvas
-        ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+      <div
         style={{
           position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          cursor: getCursor(),
-          zIndex: 2,
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+          width: fittedStage ? `${fittedStage.width}px` : "100%",
+          height: fittedStage ? `${fittedStage.height}px` : "100%",
+          overflow: "hidden",
         }}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-      />
-      {/* Layer 3 — sketch/line art stays on top so color never hides outlines */}
-      <canvas
-        ref={bgRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          zIndex: 3,
-          pointerEvents: "none",
-        }}
-      />
-      {showLowConfidenceOverlay && lowConfidenceOverlayUrl && (
-        <img
-          src={lowConfidenceOverlayUrl}
-          alt="Low confidence overlay"
+      >
+        {/* Layer 1 — base color layer */}
+        <canvas
+          ref={colorRef}
           style={{
             position: "absolute",
             inset: 0,
             width: "100%",
             height: "100%",
-            objectFit: "contain",
-            zIndex: 4,
+            zIndex: 1,
             pointerEvents: "none",
-            opacity: 0.46,
           }}
         />
-      )}
-      <canvas
-        ref={segmentHighlightRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-          zIndex: 5,
-          pointerEvents: "none",
-        }}
-      />
+        {/* Layer 2 — editable AI/manual color layer + event receiver */}
+        <canvas
+          ref={canvasRef as React.RefObject<HTMLCanvasElement>}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            cursor: getCursor(),
+            zIndex: 2,
+          }}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+        />
+        {/* Layer 3 — sketch/line art stays on top so color never hides outlines */}
+        <canvas
+          ref={bgRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 3,
+            pointerEvents: "none",
+          }}
+        />
+        {showLowConfidenceOverlay && lowConfidenceOverlayUrl && (
+          <img
+            src={lowConfidenceOverlayUrl}
+            alt="Low confidence overlay"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "fill",
+              zIndex: 4,
+              pointerEvents: "none",
+              opacity: 1,
+              filter: "drop-shadow(0 0 2px rgba(255,190,35,0.35))",
+            }}
+          />
+        )}
+        <canvas
+          ref={segmentHighlightRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 5,
+            pointerEvents: "none",
+          }}
+        />
+      </div>
     </div>
   );
 });

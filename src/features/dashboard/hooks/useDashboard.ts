@@ -133,8 +133,10 @@ export function useDashboard() {
   const [paintableFrames, setPaintableFrames] = useState<Set<number>>(new Set());
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Toast helper
+  // Keep the workspace quiet: progress is shown inline on the active control.
+  // Toasts are reserved for failures that genuinely require user attention.
   const addToast = useCallback((message: string, type: "success" | "error" | "info" = "info", duration = 3000) => {
+    if (type !== "error") return;
     const id = Date.now().toString();
     setToasts((prev) => [...prev, { id, type, message, duration }]);
   }, []);
@@ -635,8 +637,6 @@ export function useDashboard() {
 
     try {
       setIsColoring(true);
-      addToast("⏳ Đang lưu frame hiện tại thành correction keyframe...", "info", 6000);
-
       const savedUrl = await handleSaveCurrentFrame();
       if (!savedUrl) {
         addToast("❌ Không lưu được correction keyframe. Hãy thử bấm Save trước.", "error", 7000);
@@ -681,17 +681,10 @@ export function useDashboard() {
       );
 
       if (targetFrameIds.length === 0) {
-        addToast("✅ Correction keyframe đã lưu. Không có frame phía sau để recolor.", "success", 6000);
         await refreshFrames();
         await loadFrameReview();
         return;
       }
-
-      addToast(
-        `⏳ Recolor ${targetFrameIds.length} frame phía sau bằng correction keyframe...`,
-        "info",
-        8000,
-      );
 
       const previousJob = frameReview?.job;
       if (previousJob?.id && ["created", "running", "waiting_review"].includes(previousJob.status)) {
@@ -707,7 +700,7 @@ export function useDashboard() {
         settings: buildColorizationSettings(),
       });
 
-      const { lastStatus, totalProcessed } = await runColorizationJob(
+      await runColorizationJob(
         started.job.id,
         targetFrameIds.length + 3,
         targetFrameIds.length,
@@ -716,11 +709,6 @@ export function useDashboard() {
       await refreshFrames();
       await loadFrameReview();
 
-      if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
-        addToast("⚠️ Recolor dừng ở frame cần Review/Correction", "info", 8000);
-      } else {
-        addToast(`✅ Đã recolor ${totalProcessed} frame phía sau correction keyframe`, "success", 7000);
-      }
     } catch (error) {
       console.error("CORRECTION KEYFRAME RECOLOR ERROR:", error);
       addToast(`❌ Lỗi Correction Keyframe: ${(error as Error).message}`, "error", 10000);
@@ -763,21 +751,14 @@ export function useDashboard() {
         const reviewIndex = uncoloredFiles.findIndex((frame) => frame.id === reviewFrameId);
         if (reviewIndex >= 0) handleFrameChange(reviewIndex);
         await loadFrameReview();
-        addToast("⚠️ Sequence đang chờ Review/Correction trước khi tiếp tục", "info", 7000);
         return;
       }
       if (existing.job && ["created", "running"].includes(existingStatus)) {
         setIsColoring(true);
         const pending = existing.frames.filter((frame) => frame.pipeline_status === "pending").length;
-        addToast(`⏳ Tiếp tục sequence đang xử lý (${pending} frame còn lại)...`, "info", 7000);
-        const result = await runColorizationJob(existing.job.id, pending + 3, pending);
+        await runColorizationJob(existing.job.id, pending + 3, pending);
         await refreshFrames();
         await loadFrameReview();
-        if (["needs_review_not_reference", "waiting_review"].includes(result.lastStatus)) {
-          addToast("⚠️ Sequence dừng ở frame cần Review/Correction", "info", 8000);
-        } else {
-          addToast(`✅ Sequence đã tiếp tục và xử lý ${result.totalProcessed} frame`, "success", 7000);
-        }
         return;
       }
     } catch (stateError) {
@@ -805,7 +786,6 @@ export function useDashboard() {
     // Nếu user đang mở đúng reference và vừa sửa tay trên canvas,
     // save lại thành correction keyframe trước khi tạo job mới.
     if (activeFrame === referenceIndex && frameStates[referenceIndex] === "manual") {
-      addToast("⏳ Đang lưu correction reference hiện tại...", "info", 5000);
       const savedUrl = await handleSaveCurrentFrame();
 
       if (savedUrl) {
@@ -846,12 +826,6 @@ export function useDashboard() {
 
     try {
       setIsColoring(true);
-      addToast(
-        `⏳ Auto Color ${targetFrameIds.length} frame phía sau Frame ${referenceIndex + 1}...`,
-        "info",
-        7000,
-      );
-
       const started = await startColorizationJob({
         projectId,
         referenceFrameId: effectiveReference.id,
@@ -861,7 +835,7 @@ export function useDashboard() {
         settings: buildColorizationSettings(),
       });
 
-      const { lastStatus, totalProcessed } = await runColorizationJob(
+      await runColorizationJob(
         started.job.id,
         targetFrameIds.length + 3,
         targetFrameIds.length,
@@ -870,11 +844,6 @@ export function useDashboard() {
       await refreshFrames();
       await loadFrameReview();
 
-      if (lastStatus === "needs_review_not_reference" || lastStatus === "waiting_review") {
-        addToast("⚠️ Auto Color dừng ở frame cần Review/Correction", "info", 8000);
-      } else {
-        addToast(`✅ Đã tô lại ${totalProcessed} frame phía sau reference`, "success", 7000);
-      }
     } catch (error) {
       console.error("AUTO COLOR CORE ERROR:", error);
       addToast(`❌ Lỗi Auto Color Sequence: ${(error as Error).message}`, "error", 10000);
@@ -908,13 +877,9 @@ const handleImportUncolored = async (
     return;
   }
 
-  if (isImporting) {
-    addToast("⏳ Một lần import khác đang chạy. Hãy chờ hoàn tất.", "info", 5000);
-    return;
-  }
+  if (isImporting) return;
 
   setIsImporting(true);
-  addToast(`⏳ Đang import ${files.length} ảnh...`, "info", 5000);
 
   const succeeded: ImportedFile[] = [];
   const failed: string[] = [];
@@ -960,11 +925,11 @@ const handleImportUncolored = async (
     }
 
     if (succeeded.length > 0 && failed.length === 0) {
-      addToast(`✅ Imported ${succeeded.length} uncolored frame(s)`, "success", 6000);
+      // The sidebar count and timeline update are the completion feedback.
     } else if (succeeded.length > 0) {
       addToast(
-        `⚠️ Imported ${succeeded.length}/${files.length}. Failed: ${failed.map((item) => item.split(":")[0]).join(", ")}`,
-        "info",
+        `Import completed with ${failed.length} failed file(s): ${failed.map((item) => item.split(":")[0]).join(", ")}`,
+        "error",
         10000,
       );
     } else {

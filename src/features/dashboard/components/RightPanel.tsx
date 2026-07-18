@@ -6,6 +6,7 @@ import {
 import { ColorPickerWheel } from "./ColorPickerWheel";
 import { Slider } from "./Slider";
 import { ReviewCorrectionPanel } from "./ReviewCorrectionPanel";
+import { ActivityDots } from "./ActivityDots";
 import { TOOLS, BLEND_MODES, PALETTE_ROWS } from "../constants/dashboardData";
 import type { useDashboard } from "../hooks/useDashboard";
 
@@ -98,6 +99,7 @@ export function RightPanel({ ctx }: RightPanelProps) {
                 style={{ width: "100%", padding: "7px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#8B5CF6,#3B82F6)", color: "white", fontWeight: 700, fontSize: 11, cursor: isColoring ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: "0 2px 8px rgba(139,92,246,0.3)", fontFamily: "'Inter',sans-serif", marginBottom: 5, opacity: isColoring ? 0.75 : 1 }}
               >
                 <Wand2 size={12} />Correction Keyframe & Continue
+                {isColoring && <ActivityDots label="Saving correction and recoloring" />}
               </button>
 
                 <button
@@ -111,7 +113,8 @@ export function RightPanel({ ctx }: RightPanelProps) {
                   disabled={isColoring}
                   style={{ width: "100%", padding: "7px", borderRadius: 8, border: "1.5px solid #2A2A40", background: "#181827", color: "#FF52AE", fontWeight: 600, fontSize: 11, cursor: isColoring ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, fontFamily: "'Inter',sans-serif", opacity: isColoring ? 0.7 : 1 }}
                 >
-                  <Sparkles size={12} />{isColoring ? "Coloring Sequence..." : "Auto Color Sequence"}
+                  <Sparkles size={12} />Auto Color Sequence
+                  {isColoring && <ActivityDots label="Coloring sequence" />}
                 </button>
             </div>
           )}

@@ -244,7 +244,16 @@ def read_rgb_url(url: str) -> np.ndarray:
 
 
 def save_png_bytes(arr: np.ndarray) -> bytes:
-    im = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), mode="RGB")
+    clipped = np.clip(arr, 0, 255).astype(np.uint8)
+    if clipped.ndim == 2:
+        mode = "L"
+    elif clipped.ndim == 3 and clipped.shape[2] == 4:
+        mode = "RGBA"
+    elif clipped.ndim == 3 and clipped.shape[2] == 3:
+        mode = "RGB"
+    else:
+        raise ValueError(f"Unsupported PNG array shape: {clipped.shape}")
+    im = Image.fromarray(clipped, mode=mode)
     buf = io.BytesIO()
     im.save(buf, format="PNG")
     return buf.getvalue()
@@ -546,13 +555,51 @@ def draw_segment_ids(base_rgb: np.ndarray, a: FrameAnalysis, max_ids: int = 300)
 
 
 def confidence_overlay(colorized: np.ndarray, a: FrameAnalysis, conf: Dict[int, float], threshold: float) -> np.ndarray:
-    out = colorized.astype(np.float32)
-    red = np.array([255, 40, 40], dtype=np.float32)
+    """Return a transparent review layer containing only uncertain regions.
+
+    Earlier builds returned another full colorized RGB image and the browser
+    placed it over the canvas at partial opacity. High-confidence pixels were
+    therefore duplicated, so the toggle looked ineffective and could not align
+    reliably with the editor canvas. An RGBA mask is both clearer and cheaper to
+    understand: transparent everywhere, red tint + amber edge only where review
+    is actually needed.
+    """
+    overlay = np.zeros((a.height, a.width, 4), dtype=np.uint8)
+    low_mask = np.zeros((a.height, a.width), dtype=np.uint8)
+
     for seg in a.segments:
         if float(conf.get(seg.segment_id, 1.0)) < threshold:
-            mask = a.labels == seg.segment_id
-            out[mask] = 0.58 * out[mask] + 0.42 * red
-    return np.clip(out, 0, 255).astype(np.uint8)
+            low_mask[a.labels == seg.segment_id] = 255
+
+    if not np.any(low_mask):
+        return overlay
+
+    # Soft red region fill. Embedded alpha means the frontend should render the
+    # asset at opacity 1 rather than dimming the whole frame.
+    mask = low_mask > 0
+    overlay[mask, 0] = 255
+    overlay[mask, 1] = 55
+    overlay[mask, 2] = 70
+    overlay[mask, 3] = 92
+
+    # A crisp amber boundary makes narrow uncertain regions visible even over
+    # red/orange artwork.
+    eroded = cv2.erode(low_mask, np.ones((3, 3), np.uint8), iterations=1)
+    boundary = (low_mask > 0) & (eroded == 0)
+    overlay[boundary, 0] = 255
+    overlay[boundary, 1] = 190
+    overlay[boundary, 2] = 35
+    overlay[boundary, 3] = 225
+
+    # Sparse diagonal markers communicate that this is a diagnostic layer, not
+    # paint baked into the frame.
+    yy, xx = np.indices(low_mask.shape)
+    hatch = mask & (((xx + yy) % 18) < 2)
+    overlay[hatch, 0] = 255
+    overlay[hatch, 1] = 235
+    overlay[hatch, 2] = 110
+    overlay[hatch, 3] = 150
+    return overlay
 
 # -----------------------------------------------------------------------------
 # Propagation
@@ -605,6 +652,37 @@ def choose_background_color(prev: FrameAnalysis, prev_colors: Dict[int, Tuple[in
     return prev_colors[max(bg, key=lambda s: s.area).segment_id]
 
 
+def static_overlap_candidate(
+    prev: FrameAnalysis,
+    prev_colors: Dict[int, Tuple[int, int, int]],
+    curr: FrameAnalysis,
+    segment_id: int,
+) -> Optional[Tuple[int, float, float]]:
+    """Find a stable same-position match when optical flow is uncertain.
+
+    Flat backgrounds and large low-texture regions can make Farneback flow
+    ambiguous. Looking at the previous labels under the current segment gives a
+    conservative spatial prior and prevents an unmatched sky/background patch
+    from borrowing a saturated foreground color elsewhere in the frame.
+    """
+    if prev.labels.shape != curr.labels.shape:
+        return None
+    values = prev.labels[curr.labels == int(segment_id)]
+    values = values[values > 0]
+    if len(values) == 0:
+        return None
+    unique, counts = np.unique(values, return_counts=True)
+    candidates = [(int(label), int(count)) for label, count in zip(unique, counts) if int(label) in prev_colors]
+    if not candidates:
+        return None
+    best_label, best_count = max(candidates, key=lambda item: item[1])
+    total = max(1, sum(count for _, count in candidates))
+    segment_area = max(1, int(np.sum(curr.labels == int(segment_id))))
+    coverage = float(total / segment_area)
+    purity = float(best_count / total)
+    return best_label, coverage, purity
+
+
 def propagate_colors(prev: FrameAnalysis, prev_colors: Dict[int, Tuple[int, int, int]], curr: FrameAnalysis, cfg: AnalyzeSettings):
     colors: Dict[int, Tuple[int, int, int]] = {}
     confidence: Dict[int, float] = {}
@@ -653,6 +731,26 @@ def propagate_colors(prev: FrameAnalysis, prev_colors: Dict[int, Tuple[int, int,
     for seg in curr.segments:
         if seg.segment_id in colors:
             continue
+
+        spatial = static_overlap_candidate(prev, prev_colors, curr, seg.segment_id)
+        if spatial is not None:
+            spatial_prev, coverage, purity = spatial
+            matched_seg = prev_seg_by_id.get(spatial_prev)
+            same_border_class = matched_seg is not None and matched_seg.touches_border == seg.touches_border
+            # This path is intentionally stricter than optical flow. It is most
+            # useful for large stable regions and should not override clearly
+            # moving foreground parts.
+            if coverage >= 0.12 and purity >= 0.58 and (same_border_class or purity >= 0.78):
+                colors[seg.segment_id] = prev_colors[spatial_prev]
+                confidence[seg.segment_id] = min(0.88, max(0.38, 0.42 + 0.28 * min(1.0, coverage) + 0.18 * purity))
+                match_info[seg.segment_id] = {
+                    "method": "static_overlap_majority",
+                    "matched_prev_segment": spatial_prev,
+                    "overlap_coverage": round(coverage, 4),
+                    "overlap_purity": round(purity, 4),
+                }
+                continue
+
         candidates = prev_segs
         if seg.touches_border:
             border_candidates = [s for s in prev_segs if s.touches_border]
@@ -690,22 +788,18 @@ def propagate_colors(prev: FrameAnalysis, prev_colors: Dict[int, Tuple[int, int,
 
 
 def guess_role(seg: Segment, width: int, height: int) -> str:
-    x, y, w, h = seg.bbox
-    cy = seg.centroid[1] / max(1, height)
+    """Return a conservative CV-only role guess.
+
+    Screen position alone is not enough to call the upper part of an arbitrary
+    scene "hair" or the lower part "pants". Those guesses polluted Role Memory
+    in environment-heavy shots. Border-connected regions are safely treated as
+    background; everything else remains a generic object until the user or Nova
+    confirms a semantic role.
+    """
     area = seg.area_ratio
-    if seg.touches_border and area > 0.08:
+    if seg.touches_border and area > 0.012:
         return "background"
-    if cy < 0.28 and area > 0.006:
-        return "hair"
-    if 0.22 <= cy <= 0.45 and area < 0.04:
-        return "skin"
-    if 0.35 <= cy <= 0.68:
-        return "shirt"
-    if cy > 0.62 and area > 0.002:
-        return "pants"
-    if cy > 0.78:
-        return "shoes"
-    if seg.pattern_score > 0.65:
+    if seg.pattern_score > 0.72 and area < 0.08:
         return "accessory"
     return "object"
 

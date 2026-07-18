@@ -14,6 +14,7 @@ import {
 import { useState } from "react";
 import type { useDashboard } from "../hooks/useDashboard";
 import { ExportModal } from "./ExportModal";
+import { ActivityDots } from "./ActivityDots";
 import { useEntitlements } from "@/features/account/hooks/useEntitlements";
 
 type DashboardCtx = ReturnType<typeof useDashboard>;
@@ -58,7 +59,6 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
     undoStack,
     redoStack,
     isColoring,
-    colorizationProgress,
     frameReview,
     handleAutoColor,
     handleUndo,
@@ -86,11 +86,7 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
     reviewRequired ||
     processingRemaining == null ||
     processingRemaining > 0;
-  const autoColorLabel = isColoring
-    ? colorizationProgress
-      ? `Coloring ${colorizationProgress.processed}/${colorizationProgress.total}`
-      : "Coloring…"
-    : isResumable
+  const autoColorLabel = isResumable
       ? "Resume Sequence"
       : reviewRequired
         ? "Review Required"
@@ -205,10 +201,9 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
             opacity: !canProcess ? .55 : 1,
           }}
         >
-          {isColoring
-            ? <RefreshCw size={11} className="animate-spin" />
-            : <Sparkles size={11} />}
+          <Sparkles size={11} />
           {autoColorLabel}
+          {isColoring && <ActivityDots label="Coloring sequence" />}
         </button>
 
         {processingRemaining != null && (
@@ -233,6 +228,7 @@ export function Toolbar({ ctx, projectName }: ToolbarProps) {
         >
           <Forward size={11} />
           Correct & Continue
+          {isColoring && <ActivityDots label="Saving correction and recoloring" />}
         </button>
 
         {/* Creative tools */}
