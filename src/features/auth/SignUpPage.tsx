@@ -214,7 +214,7 @@
 // - Email verification screen sau khi đăng ký thành công
 
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Eye, EyeOff, Check, Loader2, Mail } from "lucide-react";
 import { useAuth } from "./hooks/useAuth";
 import { BrandLogo } from "@/shared/components/BrandLogo";
@@ -229,6 +229,7 @@ export function SignUpPage() {
   const [emailSent,      setEmailSent]      = useState(false);
 
   const { signUp } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const redirectTo = searchParams.get("redirect");
   const signInUrl = redirectTo ? `/signin?redirect=${encodeURIComponent(redirectTo)}` : "/signin";
@@ -257,9 +258,16 @@ export function SignUpPage() {
       return;
     }
 
-    console.log('[SignUpPage] Sign up successful, showing email verification screen');
-    // Supabase sends verification email — show confirmation screen
-    setEmailSent(true);
+    if (result.needsEmailVerification) {
+      setEmailSent(true);
+      return;
+    }
+
+    const safeRedirect =
+      redirectTo?.startsWith("/") && !redirectTo.startsWith("//")
+        ? redirectTo
+        : "/projects";
+    navigate(safeRedirect, { replace: true });
   };
 
   // ─── Email verification sent screen ───────────────────────────────────────

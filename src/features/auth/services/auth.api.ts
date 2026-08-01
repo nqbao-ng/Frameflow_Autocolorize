@@ -9,6 +9,24 @@ import type { AuthResult, AuthUser, SignInCredentials, SignUpCredentials } from 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function getAuthErrorMessage(error: unknown): string {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "Unknown authentication error";
+
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return (
+      "Cannot connect to the authentication service. " +
+      "Please check the Vercel Supabase variables and redeploy the latest build."
+    );
+  }
+
+  return message;
+}
+
 /** Map Supabase user object → AuthUser (internal shape) */
 function mapUser(raw: import("@supabase/supabase-js").User): AuthUser {
   return {
@@ -60,43 +78,46 @@ async function fetchProfileData(userId: string): Promise<Partial<AuthUser> | nul
 
 /** Đăng nhập bằng email + password */
 export async function signIn(credentials: SignInCredentials): Promise<AuthResult> {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email:    credentials.email,
-    password: credentials.password,
-  });
+  try {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: credentials.email.trim().toLowerCase(),
+      password: credentials.password,
+    });
 
-  if (error) return { success: false, error: error.message };
+    if (error) {
+      return { success: false, error: getAuthErrorMessage(error) };
+    }
 
-   // The database trigger creates the profile with safe defaults.
-
-
-  return { success: true };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: getAuthErrorMessage(error) };
+  }
 }
 
 /** Đăng ký tài khoản mới */
 export async function signUp(credentials: SignUpCredentials): Promise<AuthResult> {
-  console.log('[signUp] Creating auth user:', credentials.email);
-  
-  const { data, error } = await supabase.auth.signUp({
-    email:    credentials.email,
-    password: credentials.password,
-    options: {
-      data: { full_name: credentials.fullName ?? "" },
-    },
-  });
+  const email = credentials.email.trim().toLowerCase();
 
-  if (error) {
-    console.error('[signUp] Auth signup failed:', error.message);
-    return { success: false, error: error.message };
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password: credentials.password,
+      options: {
+        data: { full_name: credentials.fullName?.trim() ?? "" },
+      },
+    });
+
+    if (error) {
+      console.error("[signUp] Auth signup failed:", error.message);
+      return { success: false, error: getAuthErrorMessage(error) };
+    }
+
+    // When email confirmation is enabled, Supabase returns no session.
+    return { success: true, needsEmailVerification: !data.session };
+  } catch (error) {
+    console.error("[signUp] Auth signup request failed:", error);
+    return { success: false, error: getAuthErrorMessage(error) };
   }
-
-  console.log('[signUp] Auth user created:', data.user?.id);
-
-  // The database trigger creates the profile and starts the 3-day trial.
-
-
-  // Supabase gửi verification email — user cần xác nhận trước khi login
-  return { success: true, needsEmailVerification: true };
 }
 
 /** Đăng xuất */
