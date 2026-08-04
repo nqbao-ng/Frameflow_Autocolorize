@@ -245,11 +245,7 @@ export function SignUpPage() {
     }
 
     setLoading(true);
-    console.log('[SignUpPage] Submitting signup for:', email);
-
     const result = await signUp({ email, password, fullName: name });
-    console.log('[SignUpPage] signUp result:', result);
-
     setLoading(false);
 
     if (!result.success) {

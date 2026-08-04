@@ -9,6 +9,14 @@ import {
 } from "./services/billing.api";
 import { UsageCard } from "@/features/account/components/UsageCard";
 
+const paymentStatus: Record<string, { label: string; background: string; color: string }> = {
+  paid: { label: "Paid", background: "#ECFDF5", color: "#059669" },
+  pending: { label: "Awaiting payment", background: "#FFFBEB", color: "#B45309" },
+  cancelled: { label: "Cancelled", background: "#F8FAFC", color: "#64748B" },
+  expired: { label: "Expired", background: "#FFF7ED", color: "#C2410C" },
+  failed: { label: "Failed", background: "#FEF2F2", color: "#DC2626" },
+};
+
 const card: React.CSSProperties = {
   background: "white",
   border: "1px solid #E8EFFE",
@@ -43,10 +51,6 @@ export function BillingPanel() {
 
   const activePlan = summary?.profile.planCode || "free";
   const activePlanDefinition = summary?.plans.find((plan) => plan.code === activePlan);
-  const activePlanName = activePlanDefinition?.name || "Free";
-  const activeUntil = summary?.subscription?.status === "active"
-    ? new Date(summary.subscription.currentPeriodEnd).toLocaleDateString("vi-VN")
-    : null;
 
   const checkout = async (planCode: string) => {
     setCheckoutPlan(planCode);
@@ -63,6 +67,10 @@ export function BillingPanel() {
 
   const paidPayments = useMemo(
     () => summary?.payments.filter((payment) => payment.status === "paid") || [],
+    [summary?.payments],
+  );
+  const recentPayments = useMemo(
+    () => summary?.payments.slice(0, 5) || [],
     [summary?.payments],
   );
 
@@ -88,7 +96,7 @@ export function BillingPanel() {
 
       {summary?.entitlements && (
         <div style={{ marginBottom: 20 }}>
-          <UsageCard entitlements={summary.entitlements} />
+          <UsageCard entitlements={summary.entitlements} showAction={false} />
         </div>
       )}
 
@@ -159,8 +167,8 @@ export function BillingPanel() {
 
       <div style={card}>
         <div style={{ fontSize: 15, fontWeight: 700, color: "#1E293B", marginBottom: 4 }}>Billing history</div>
-        <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Your latest payOS payment requests and confirmations.</div>
-        {(summary?.payments.length || 0) === 0 ? (
+        <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Your five most recent payOS transactions.</div>
+        {recentPayments.length === 0 ? (
           <div style={{ padding: "18px", borderRadius: 10, background: "#F8FAFC", color: "#94A3B8", fontSize: 13, textAlign: "center" }}>No payment history yet.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -175,26 +183,31 @@ export function BillingPanel() {
                 </tr>
               </thead>
               <tbody>
-                {summary?.payments.map((payment) => (
-                  <tr key={payment.id} style={{ borderBottom: "1px solid #F1F5F9", color: "#334155" }}>
-                    <td style={{ padding: "11px 8px" }}>{new Date(payment.createdAt).toLocaleDateString("vi-VN")}</td>
-                    <td style={{ padding: "11px 8px", fontFamily: "monospace" }}>{payment.orderCode}</td>
-                    <td style={{ padding: "11px 8px", textTransform: "capitalize" }}>{payment.planCode}</td>
-                    <td style={{ padding: "11px 8px", fontWeight: 700 }}>{formatVnd(payment.amountVnd)}</td>
-                    <td style={{ padding: "11px 8px" }}>
-                      <span style={{
-                        display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontWeight: 700, textTransform: "capitalize",
-                        background: payment.status === "paid" ? "#ECFDF5" : payment.status === "pending" ? "#FFFBEB" : "#FEF2F2",
-                        color: payment.status === "paid" ? "#059669" : payment.status === "pending" ? "#B45309" : "#DC2626",
-                      }}>{payment.status}</span>
-                    </td>
-                  </tr>
-                ))}
+                {recentPayments.map((payment) => {
+                  const status = paymentStatus[payment.status] || paymentStatus.failed;
+                  const planName = summary?.plans.find((plan) => plan.code === payment.planCode)?.name || payment.planCode;
+                  const transactionDate = payment.paidAt || payment.createdAt;
+                  return (
+                    <tr key={payment.id} style={{ borderBottom: "1px solid #F1F5F9", color: "#334155" }}>
+                      <td style={{ padding: "11px 8px", whiteSpace: "nowrap" }}>{new Date(transactionDate).toLocaleDateString("vi-VN")}</td>
+                      <td style={{ padding: "11px 8px", fontFamily: "monospace" }}>#{payment.orderCode}</td>
+                      <td style={{ padding: "11px 8px" }}>{planName}</td>
+                      <td style={{ padding: "11px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{formatVnd(payment.amountVnd)}</td>
+                      <td style={{ padding: "11px 8px" }}>
+                        <span style={{
+                          display: "inline-flex", padding: "3px 8px", borderRadius: 999, fontWeight: 700, whiteSpace: "nowrap",
+                          background: status.background,
+                          color: status.color,
+                        }}>{status.label}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-        {paidPayments.length > 0 && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 12 }}>Confirmed payments: {paidPayments.length}</div>}
+        {paidPayments.length > 0 && <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 12 }}>Successful payments in the available history: {paidPayments.length}</div>}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>

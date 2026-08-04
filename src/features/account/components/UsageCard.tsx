@@ -24,10 +24,30 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(Math.max(0, value));
 }
 
-export function UsageCard({ entitlements, compact = false }: { entitlements: AccountEntitlements; compact?: boolean }) {
+function daysUntil(value: string) {
+  const end = new Date(value).getTime();
+  if (!Number.isFinite(end)) return 0;
+  return Math.max(0, Math.ceil((end - Date.now()) / 86_400_000));
+}
+
+export function UsageCard({
+  entitlements,
+  compact = false,
+  showAction = true,
+}: {
+  entitlements: AccountEntitlements;
+  compact?: boolean;
+  showAction?: boolean;
+}) {
+  const planDaysRemaining = daysUntil(entitlements.plan.periodEnd);
   const planLabel = entitlements.plan.code === "trial"
     ? `PRO TRIAL · ${entitlements.plan.trialDaysRemaining} day${entitlements.plan.trialDaysRemaining === 1 ? "" : "s"} left`
+    : entitlements.plan.code === "pro"
+      ? `PRO PLAN · ${planDaysRemaining} day${planDaysRemaining === 1 ? "" : "s"} left`
     : `${entitlements.plan.name.toUpperCase()} PLAN`;
+  const periodLabel = entitlements.plan.code === "pro" || entitlements.plan.code === "trial"
+    ? "Active until"
+    : "Usage resets";
 
   const frameUsed = entitlements.usage.processingFrames + entitlements.usage.processingFramesReserved;
   const frameLimit = entitlements.limits.processingFrames;
@@ -52,15 +72,17 @@ export function UsageCard({ entitlements, compact = false }: { entitlements: Acc
         <div>
           <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#C4B5FD", fontWeight: 800 }}>{planLabel}</div>
           <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 5, display: "flex", alignItems: "center", gap: 6 }}>
-            <Clock3 size={12} /> Resets {new Date(entitlements.plan.periodEnd).toLocaleDateString("vi-VN")}
+            <Clock3 size={12} /> {periodLabel} {new Date(entitlements.plan.periodEnd).toLocaleDateString("vi-VN")}
           </div>
         </div>
-        <Link
-          to={`/settings?tab=billing${entitlements.plan.code === "pro" ? "" : "&plan=pro"}`}
-          style={{ textDecoration: "none", color: "white", background: "linear-gradient(135deg,#7C3AED,#EC4899)", padding: "9px 13px", borderRadius: 10, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}
-        >
-          {actionLabel}
-        </Link>
+        {showAction && (
+          <Link
+            to={`/settings?tab=billing${entitlements.plan.code === "pro" ? "" : "&plan=pro"}`}
+            style={{ textDecoration: "none", color: "white", background: "linear-gradient(135deg,#7C3AED,#EC4899)", padding: "9px 13px", borderRadius: 10, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}
+          >
+            {actionLabel}
+          </Link>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "minmax(0,1.65fr) minmax(220px,.85fr)", gap: 12 }}>

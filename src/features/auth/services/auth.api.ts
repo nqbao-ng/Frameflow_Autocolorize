@@ -6,26 +6,9 @@
 
 import { supabase } from "@/lib/supabase";
 import type { AuthResult, AuthUser, SignInCredentials, SignUpCredentials } from "../types";
+import { getAuthErrorMessage, isRetryableAuthError } from "./auth-errors";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getAuthErrorMessage(error: unknown): string {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : "Unknown authentication error";
-
-  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
-    return (
-      "Cannot connect to the authentication service. " +
-      "Please check the Vercel Supabase variables and redeploy the latest build."
-    );
-  }
-
-  return message;
-}
 
 /** Map Supabase user object → AuthUser (internal shape) */
 function mapUser(raw: import("@supabase/supabase-js").User): AuthUser {
@@ -97,15 +80,23 @@ export async function signIn(credentials: SignInCredentials): Promise<AuthResult
 /** Đăng ký tài khoản mới */
 export async function signUp(credentials: SignUpCredentials): Promise<AuthResult> {
   const email = credentials.email.trim().toLowerCase();
+  const request = () => supabase.auth.signUp({
+    email,
+    password: credentials.password,
+    options: {
+      data: { full_name: credentials.fullName?.trim() ?? "" },
+    },
+  });
 
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password: credentials.password,
-      options: {
-        data: { full_name: credentials.fullName?.trim() ?? "" },
-      },
-    });
+    let { data, error } = await request();
+
+    // A transient browser/Supabase fetch failure is sometimes surfaced as "{}".
+    // Retry this email-scoped operation once, then show a useful error if it persists.
+    if (error && isRetryableAuthError(error)) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      ({ data, error } = await request());
+    }
 
     if (error) {
       console.error("[signUp] Auth signup failed:", error.message);
