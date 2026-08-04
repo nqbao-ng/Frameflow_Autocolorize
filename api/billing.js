@@ -27,24 +27,30 @@ function getSupabaseAdmin() {
   });
 }
 
-function getPayOSConfig() {
+function getPayOSCredentials() {
   const clientId = String(process.env.PAYOS_CLIENT_ID || '').trim();
   const apiKey = String(process.env.PAYOS_API_KEY || '').trim();
   const checksumKey = String(process.env.PAYOS_CHECKSUM_KEY || '').trim();
-  const appUrl = String(process.env.PAYOS_APP_URL || '').trim().replace(/\/$/, '');
 
   if (!clientId || !apiKey || !checksumKey) {
     const error = new Error('payOS credentials are not configured');
     error.statusCode = 503;
     throw error;
   }
+
+  return { clientId, apiKey, checksumKey };
+}
+
+function getPayOSConfig() {
+  const credentials = getPayOSCredentials();
+  const appUrl = String(process.env.PAYOS_APP_URL || '').trim().replace(/\/$/, '');
   if (!appUrl || !/^https:\/\//i.test(appUrl)) {
     const error = new Error('PAYOS_APP_URL must be a production HTTPS URL');
     error.statusCode = 503;
     throw error;
   }
 
-  return { clientId, apiKey, checksumKey, appUrl };
+  return { ...credentials, appUrl };
 }
 
 function sortObject(value) {
@@ -76,7 +82,7 @@ function toSignatureQuery(data) {
     .join('&');
 }
 
-function createPayOSSignature(data, checksumKey) {
+export function createPayOSSignature(data, checksumKey) {
   return createHmac('sha256', checksumKey)
     .update(toSignatureQuery(data))
     .digest('hex');
@@ -88,12 +94,12 @@ function safeSignatureEqual(left, right) {
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
-function verifyPayOSSignature(data, signature, checksumKey) {
+export function verifyPayOSSignature(data, signature, checksumKey) {
   return safeSignatureEqual(createPayOSSignature(data, checksumKey), signature);
 }
 
 async function payOSRequest(path, { method = 'GET', body } = {}) {
-  const { clientId, apiKey, checksumKey } = getPayOSConfig();
+  const { clientId, apiKey, checksumKey } = getPayOSCredentials();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 20000);
 
@@ -228,6 +234,48 @@ async function applyPaidOrder(supabase, payosData) {
   });
   if (error) throw error;
   return data;
+}
+
+export async function processPayOSWebhook({ body, checksumKey, supabase }) {
+  if (!body?.data || !body?.signature || !verifyPayOSSignature(body.data, body.signature, checksumKey)) {
+    const error = new Error('Invalid payOS webhook signature');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const isSuccessful = body.success === true
+    && String(body.code) === '00'
+    && String(body.data.code) === '00';
+  if (!isSuccessful) {
+    return { success: true, processed: false, reason: 'not_successful' };
+  }
+
+  const orderCode = Number(body.data.orderCode);
+  if (!Number.isSafeInteger(orderCode) || orderCode <= 0) {
+    return { success: true, processed: false, reason: 'invalid_order_code' };
+  }
+
+  // confirm-webhook sends a correctly signed sample transaction. It does not
+  // belong to a local order, so acknowledge it without invoking the payment
+  // activation RPC. The same guard also prevents an unknown order from ever
+  // changing subscriptions or credit balances.
+  const { data: payment, error: paymentError } = await supabase
+    .from('payment_orders')
+    .select('id, status')
+    .eq('order_code', orderCode)
+    .maybeSingle();
+  if (paymentError) throw paymentError;
+  if (!payment) {
+    return { success: true, processed: false, reason: 'unknown_order' };
+  }
+
+  const result = await applyPaidOrder(supabase, body.data);
+  return {
+    success: true,
+    processed: true,
+    idempotent: Boolean(result?.idempotent),
+    orderCode,
+  };
 }
 
 async function handlePlans(_req, res) {
@@ -504,19 +552,22 @@ async function handleStatus(req, res) {
 
 async function handleWebhook(req, res) {
   const body = await readJsonBody(req);
-  const { checksumKey } = getPayOSConfig();
-  if (!body?.data || !body?.signature || !verifyPayOSSignature(body.data, body.signature, checksumKey)) {
-    return sendError(res, 400, 'Invalid payOS webhook signature');
-  }
-
+  const { checksumKey } = getPayOSCredentials();
   const supabase = getSupabaseAdmin();
-  const isSuccessful = body.success === true && String(body.code) === '00' && String(body.data.code) === '00';
-  if (isSuccessful) {
-    await applyPaidOrder(supabase, body.data);
+  try {
+    const result = await processPayOSWebhook({ body, checksumKey, supabase });
+    if (result.reason === 'unknown_order') {
+      console.info('[billing] acknowledged signed payOS webhook for unknown order', body.data.orderCode);
+    }
+    // payOS expects a 2XX response, including for its sample webhook
+    // confirmation payload.
+    return sendJson(res, 200, result);
+  } catch (error) {
+    if (Number(error?.statusCode) === 400) {
+      return sendError(res, 400, error.message);
+    }
+    throw error;
   }
-
-  // payOS expects a 2XX response, including for its sample webhook confirmation payload.
-  return sendJson(res, 200, { success: true });
 }
 
 export default async function handler(req, res) {
