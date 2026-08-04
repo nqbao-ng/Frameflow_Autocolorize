@@ -40,8 +40,8 @@ export function getAuthErrorMessage(error: unknown): string {
   // Supabase can wrap a browser fetch failure as AuthRetryableFetchError("{}").
   if (isRetryableAuthError(error)) {
     return (
-      "FrameFlow could not reach the authentication service. " +
-      "Check your internet connection, disable any VPN or blocker for this site, then try again."
+      "FrameFlow authentication is temporarily unavailable. " +
+      "Please wait a moment, then try again."
     );
   }
 

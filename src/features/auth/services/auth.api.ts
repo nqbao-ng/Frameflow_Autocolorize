@@ -6,7 +6,7 @@
 
 import { supabase } from "@/lib/supabase";
 import type { AuthResult, AuthUser, SignInCredentials, SignUpCredentials } from "../types";
-import { getAuthErrorMessage, isRetryableAuthError } from "./auth-errors";
+import { getAuthErrorMessage } from "./auth-errors";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -89,14 +89,7 @@ export async function signUp(credentials: SignUpCredentials): Promise<AuthResult
   });
 
   try {
-    let { data, error } = await request();
-
-    // A transient browser/Supabase fetch failure is sometimes surfaced as "{}".
-    // Retry this email-scoped operation once, then show a useful error if it persists.
-    if (error && isRetryableAuthError(error)) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      ({ data, error } = await request());
-    }
+    const { data, error } = await request();
 
     if (error) {
       console.error("[signUp] Auth signup failed:", error.message);
