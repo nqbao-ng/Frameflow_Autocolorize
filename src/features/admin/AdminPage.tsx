@@ -1,65 +1,264 @@
-// src/features/admin/AdminPage.tsx
-//
-// Admin dashboard for managing users, credits, and roles.
-// Only accessible to users with role === 'admin'.
-
-import { useState, useEffect } from "react";
+import { useEffect, useState, type CSSProperties, type ElementType } from "react";
 import { useNavigate } from "react-router";
 import {
-  Users, CreditCard, LogOut, ArrowLeft, Search, Trash2, Edit2,
-  ChevronDown, Loader2, AlertCircle, CheckCircle,
+  Activity,
+  AlertCircle,
+  ArrowLeft,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  CircleDollarSign,
+  CreditCard,
+  Edit2,
+  Gauge,
+  Loader2,
+  LogOut,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserRoundCheck,
+  Users,
 } from "lucide-react";
 import { useAuth } from "../auth/hooks/useAuth";
 import { BrandLogo } from "@/shared/components/BrandLogo";
 import {
-  getAllUsers,
-  getUserDetails,
-  addCreditsToUser,
-  updateUserRole,
+  adjustCreditsForUser,
   deleteUser,
+  getAllUsers,
   getAuditLogs,
-  getTotalUserCount,
-  getTotalCreditsDistributed,
-  getActiveUsersThisMonth,
   getOperationalMetrics,
+  getPayments,
+  updateUserRole,
+  type AdminPayment,
   type AdminUser,
   type AuditLog,
+  type OperationalMetrics,
+  type PagedResult,
 } from "./services/admin.api";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+type AdminTab = "users" | "payments" | "audit";
+type UserRoleFilter = "all" | "user" | "admin";
+type UserPlanFilter = "all" | "trial" | "free" | "pro" | "studio";
+type PaymentStatusFilter = "all" | "pending" | "paid" | "cancelled" | "expired" | "failed";
 
-type AdminTab = "users" | "credits" | "audit";
-
-// ─── Shared Styles ────────────────────────────────────────────────────────────
+const EMPTY_PAGE = { items: [], page: 1, pageSize: 20, total: 0, totalPages: 1 };
 
 const S = {
   card: {
     background: "white",
-    border: "1px solid #E8EFFE",
-    borderRadius: 12,
-    padding: "16px",
-    marginBottom: 16,
-  } as React.CSSProperties,
+    border: "1px solid #E2E8F0",
+    borderRadius: 14,
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.03)",
+  } as CSSProperties,
   input: {
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "1.5px solid #E2E8F0",
+    height: 40,
+    padding: "0 12px",
+    borderRadius: 9,
+    border: "1px solid #CBD5E1",
+    background: "white",
+    color: "#0F172A",
     fontSize: 14,
     outline: "none",
-    fontFamily: "'DM Sans', sans-serif",
-  } as React.CSSProperties,
+    fontFamily: "inherit",
+  } as CSSProperties,
   button: {
-    padding: "8px 16px",
-    borderRadius: 8,
+    minHeight: 38,
+    padding: "8px 14px",
+    borderRadius: 9,
     border: "none",
     cursor: "pointer",
     fontSize: 13,
-    fontWeight: 600,
-    fontFamily: "'DM Sans', sans-serif",
-  } as React.CSSProperties,
+    fontWeight: 700,
+    fontFamily: "inherit",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  } as CSSProperties,
 };
 
-// ─── User Management Tab ───────────────────────────────────────────────────────
+function formatVnd(value: number) {
+  return new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(value || 0);
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value || 0);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString();
+}
+
+function badgeColors(value: string | null | undefined) {
+  switch (String(value || "").toLowerCase()) {
+    case "paid":
+    case "active":
+    case "pro":
+      return { color: "#047857", background: "#D1FAE5", border: "#A7F3D0" };
+    case "pending":
+    case "trial":
+      return { color: "#B45309", background: "#FEF3C7", border: "#FDE68A" };
+    case "failed":
+    case "cancelled":
+      return { color: "#B91C1C", background: "#FEE2E2", border: "#FECACA" };
+    case "admin":
+      return { color: "#6D28D9", background: "#EDE9FE", border: "#DDD6FE" };
+    default:
+      return { color: "#475569", background: "#F1F5F9", border: "#E2E8F0" };
+  }
+}
+
+function StatusBadge({ value }: { value: string | null | undefined }) {
+  const colors = badgeColors(value);
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "3px 8px",
+        borderRadius: 999,
+        border: `1px solid ${colors.border}`,
+        background: colors.background,
+        color: colors.color,
+        fontSize: 11,
+        fontWeight: 800,
+        textTransform: "capitalize",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {value || "none"}
+    </span>
+  );
+}
+
+function ErrorBanner({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <div style={{ ...S.card, padding: 14, display: "flex", gap: 9, alignItems: "center", color: "#B91C1C", background: "#FEF2F2", borderColor: "#FECACA", marginBottom: 16 }}>
+      <AlertCircle size={17} />
+      <span style={{ fontSize: 13 }}>{message}</span>
+    </div>
+  );
+}
+
+function LoadingState({ label }: { label: string }) {
+  return (
+    <div style={{ ...S.card, textAlign: "center", padding: "52px 20px", color: "#64748B" }}>
+      <Loader2 size={25} style={{ animation: "spin 1s linear infinite", margin: "0 auto" }} />
+      <div style={{ marginTop: 12, fontSize: 13 }}>{label}</div>
+    </div>
+  );
+}
+
+function EmptyState({ title, description }: { title: string; description: string }) {
+  return (
+    <div style={{ ...S.card, textAlign: "center", padding: "48px 20px" }}>
+      <div style={{ fontWeight: 800, color: "#334155" }}>{title}</div>
+      <div style={{ marginTop: 6, color: "#94A3B8", fontSize: 13 }}>{description}</div>
+    </div>
+  );
+}
+
+function Pagination({ data, onPageChange }: { data: PagedResult<unknown>; onPageChange: (page: number) => void }) {
+  if (data.totalPages <= 1) return null;
+  const first = (data.page - 1) * data.pageSize + 1;
+  const last = Math.min(data.page * data.pageSize, data.total);
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16, color: "#64748B", fontSize: 13 }}>
+      <span>Showing {first}–{last} of {data.total}</span>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          disabled={data.page <= 1}
+          onClick={() => onPageChange(data.page - 1)}
+          style={{ ...S.button, background: "white", border: "1px solid #CBD5E1", color: "#475569", opacity: data.page <= 1 ? 0.5 : 1 }}
+        >
+          <ChevronLeft size={15} /> Previous
+        </button>
+        <span style={{ padding: "0 5px" }}>Page {data.page} / {data.totalPages}</span>
+        <button
+          type="button"
+          disabled={data.page >= data.totalPages}
+          onClick={() => onPageChange(data.page + 1)}
+          style={{ ...S.button, background: "white", border: "1px solid #CBD5E1", color: "#475569", opacity: data.page >= data.totalPages ? 0.5 : 1 }}
+        >
+          Next <ChevronRight size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface MetricCardProps {
+  label: string;
+  value: string;
+  detail: string;
+  color: string;
+  icon: ElementType;
+  loading: boolean;
+}
+
+function MetricCard({ label, value, detail, color, icon: Icon, loading }: MetricCardProps) {
+  return (
+    <div style={{ ...S.card, padding: 18, minHeight: 130 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+        <div style={{ width: 34, height: 34, borderRadius: 10, background: `${color}14`, color, display: "grid", placeItems: "center" }}>
+          <Icon size={18} />
+        </div>
+      </div>
+      <div style={{ fontSize: 26, lineHeight: 1.2, fontWeight: 800, color: "#0F172A", marginTop: 14 }}>{loading ? "—" : value}</div>
+      <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 6 }}>{loading ? "Loading..." : detail}</div>
+    </div>
+  );
+}
+
+function DashboardStats({ adminId, refreshTrigger }: { adminId: string; refreshTrigger: number }) {
+  const [metrics, setMetrics] = useState<OperationalMetrics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      const result = await getOperationalMetrics(adminId);
+      if (cancelled) return;
+      if (result.success && result.data) setMetrics(result.data);
+      else setError(result.error || "Could not load dashboard metrics");
+      setLoading(false);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [adminId, refreshTrigger]);
+
+  const m = metrics;
+  return (
+    <>
+      <ErrorBanner message={error} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 28 }}>
+        <MetricCard label="Revenue · 30 days" value={formatVnd(m?.revenue30dVnd || 0)} detail={`${m?.paidOrders30d || 0} paid orders · before fees/refunds`} color="#0F9F6E" icon={CircleDollarSign} loading={loading} />
+        <MetricCard label="Active subscriptions" value={formatNumber(m?.activeSubscriptions || 0)} detail={`Current paid access · ${formatVnd(m?.revenueAllTimeVnd || 0)} collected all time`} color="#7C3AED" icon={ShieldCheck} loading={loading} />
+        <MetricCard label="Active creators" value={formatNumber(m?.activeUsers || 0)} detail="Unique users with product usage in 30 days" color="#2563EB" icon={Activity} loading={loading} />
+        <MetricCard label="Total users" value={formatNumber(m?.totalUsers || 0)} detail={`+${m?.newUsers30d || 0} registered in 30 days`} color="#0891B2" icon={Users} loading={loading} />
+        <MetricCard label="Pending payments" value={formatNumber(m?.pendingPayments || 0)} detail="Unexpired PayOS orders awaiting payment" color="#D97706" icon={CreditCard} loading={loading} />
+        <MetricCard label="Available credits" value={formatNumber(m?.totalCredits || 0)} detail={`${formatNumber(m?.creativeCreditsUsed || 0)} Creative Credits used in 30 days`} color="#DB2777" icon={Gauge} loading={loading} />
+        <MetricCard label="Processing usage" value={formatNumber(m?.processingFrames || 0)} detail="Metered frames processed in 30 days" color="#4F46E5" icon={UserRoundCheck} loading={loading} />
+        <MetricCard label="Estimated cost · 30 days" value={`$${(m?.estimatedCostUsd || 0).toFixed(2)}`} detail="Telemetry estimate, not an accounting expense" color="#DC2626" icon={Activity} loading={loading} />
+      </div>
+    </>
+  );
+}
 
 interface UserRowProps {
   user: AdminUser;
@@ -69,402 +268,330 @@ interface UserRowProps {
 
 function UserRow({ user, adminId, onRefresh }: UserRowProps) {
   const [editing, setEditing] = useState(false);
-  const [newRole, setNewRole] = useState(user.role);
+  const [newRole, setNewRole] = useState(user.role || "user");
   const [creditsAmount, setCreditsAmount] = useState("");
   const [creditsReason, setCreditsReason] = useState("");
-  const [addingCredits, setAddingCredits] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const complete = (message: string) => {
+    setSuccess(message);
+    setTimeout(() => {
+      setSuccess("");
+      setEditing(false);
+      onRefresh();
+    }, 900);
+  };
 
   const handleUpdateRole = async () => {
     setSaving(true);
     setError("");
     const result = await updateUserRole(adminId, user.id, newRole);
     setSaving(false);
-    if (result.success) {
-      setSuccess("Role updated!");
-      setTimeout(() => {
-        setSuccess("");
-        setEditing(false);
-        onRefresh();
-      }, 1500);
-    } else {
-      setError(result.error || "Failed to update role");
-    }
+    if (result.success) complete("Role updated");
+    else setError(result.error || "Failed to update role");
   };
 
-  const handleAddCredits = async () => {
-    if (!creditsAmount || !creditsReason) {
-      setError("Please fill in all fields");
+  const handleAdjustCredits = async () => {
+    const amount = Number(creditsAmount);
+    if (!Number.isInteger(amount) || amount === 0 || creditsReason.trim().length < 3) {
+      setError("Enter a non-zero whole number and a clear reason");
       return;
     }
-    setAddingCredits(true);
+    setSaving(true);
     setError("");
-    const result = await addCreditsToUser(adminId, user.id, parseInt(creditsAmount), creditsReason);
-    setAddingCredits(false);
+    const result = await adjustCreditsForUser(adminId, user.id, amount, creditsReason.trim());
+    setSaving(false);
     if (result.success) {
-      setSuccess("Credits added!");
       setCreditsAmount("");
       setCreditsReason("");
-      setTimeout(() => {
-        setSuccess("");
-        onRefresh();
-      }, 1500);
+      complete(amount > 0 ? "Credits added" : "Credits deducted");
     } else {
-      setError(result.error || "Failed to add credits");
+      setError(result.error || "Failed to adjust credits");
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm(`Delete user ${user.email}? This action cannot be undone.`)) return;
+    const typedEmail = window.prompt(`Permanently delete ${user.email}?\n\nType the full email address to confirm.`);
+    if (typedEmail === null) return;
+    if (typedEmail.trim().toLowerCase() !== user.email.toLowerCase()) {
+      setError("Email confirmation did not match. The account was not deleted.");
+      return;
+    }
     setSaving(true);
     setError("");
     const result = await deleteUser(adminId, user.id);
     setSaving(false);
-    if (result.success) {
-      setSuccess("User deleted!");
-      setTimeout(() => {
-        setSuccess("");
-        onRefresh();
-      }, 1500);
-    } else {
-      setError(result.error || "Failed to delete user");
-    }
+    if (result.success) complete("User deleted");
+    else setError(result.error || "Failed to delete user");
   };
 
   return (
-    <div style={{ ...S.card, marginBottom: 12 }}>
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        {/* User Info */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B" }}>
-            {user.full_name || "No name"}
+    <div style={{ ...S.card, padding: 18, marginBottom: 12 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 420px", minWidth: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: "#1E293B" }}>{user.full_name || "Unnamed user"}</span>
+            <StatusBadge value={user.role} />
+            <StatusBadge value={user.subscription_plan} />
+            {user.subscription_status && <StatusBadge value={user.subscription_status} />}
           </div>
-          <div style={{ fontSize: 13, color: "#64748B", marginTop: 2 }}>
-            {user.email}
-          </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12, color: "#475569" }}>
-            <span>
-              Credits: <strong style={{ color: "#3B82F6" }}>{user.credits}</strong>
-            </span>
-            <span>
-              Plan: <strong>{user.subscription_plan}</strong>
-            </span>
-            <span>
-              Role: <strong style={{ color: user.role === "admin" ? "#EF4444" : "#64748B" }}>
-                {user.role}
-              </strong>
-            </span>
+          <div style={{ fontSize: 13, color: "#64748B", marginTop: 5, overflowWrap: "anywhere" }}>{user.email}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "7px 18px", marginTop: 12, fontSize: 12, color: "#64748B" }}>
+            <span>Credits: <strong style={{ color: "#2563EB" }}>{formatNumber(user.credits)}</strong></span>
+            <span>Joined: <strong style={{ color: "#334155" }}>{formatDate(user.created_at)}</strong></span>
+            <span>Paid access until: <strong style={{ color: "#334155" }}>{formatDate(user.subscription_period_end)}</strong></span>
           </div>
         </div>
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <button
-            onClick={() => setEditing(!editing)}
-            style={{
-              ...S.button,
-              background: editing ? "#EFF6FF" : "#F3F4F6",
-              color: editing ? "#3B82F6" : "#6B7280",
-            }}
-          >
-            <Edit2 size={13} style={{ display: "inline-block" }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={() => { setEditing(!editing); setError(""); }} style={{ ...S.button, background: editing ? "#DBEAFE" : "#F1F5F9", color: editing ? "#1D4ED8" : "#475569" }}>
+            <Edit2 size={14} /> Manage
           </button>
-          <button
-            onClick={handleDelete}
-            disabled={saving}
-            style={{
-              ...S.button,
-              background: "#FEE2E2",
-              color: "#DC2626",
-              opacity: saving ? 0.6 : 1,
-            }}
-          >
-            <Trash2 size={13} style={{ display: "inline-block" }} />
+          <button type="button" onClick={handleDelete} disabled={saving || user.role === "admin"} title={user.role === "admin" ? "Demote this admin before deleting" : "Delete account"} style={{ ...S.button, background: "#FEE2E2", color: "#B91C1C", opacity: saving || user.role === "admin" ? 0.45 : 1 }}>
+            <Trash2 size={14} /> Delete
           </button>
         </div>
       </div>
 
-      {/* Edit/Add Credits Panel */}
       {editing && (
-        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #F1F5F9" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-            {/* Change Role */}
+        <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid #E2E8F0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 18 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                Role
-              </label>
-              <select
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value)}
-                style={{
-                  ...S.input,
-                  width: "100%",
-                }}
-              >
+              <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 7 }}>Account role</label>
+              <select value={newRole} onChange={(event) => setNewRole(event.target.value)} style={{ ...S.input, width: "100%" }}>
                 <option value="user">User</option>
                 <option value="admin">Admin</option>
               </select>
-              <button
-                onClick={handleUpdateRole}
-                disabled={saving}
-                style={{
-                  ...S.button,
-                  background: "#3B82F6",
-                  color: "white",
-                  width: "100%",
-                  marginTop: 8,
-                  opacity: saving ? 0.6 : 1,
-                }}
-              >
-                {saving ? "Updating..." : "Update Role"}
+              <button type="button" onClick={handleUpdateRole} disabled={saving || newRole === user.role} style={{ ...S.button, background: "#2563EB", color: "white", width: "100%", marginTop: 8, opacity: saving || newRole === user.role ? 0.55 : 1 }}>
+                {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <ShieldCheck size={14} />}
+                Update role
               </button>
             </div>
-
-            {/* Add Credits */}
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                Add Credits
-              </label>
-              <input
-                type="number"
-                value={creditsAmount}
-                onChange={(e) => setCreditsAmount(e.target.value)}
-                placeholder="Amount"
-                style={{ ...S.input, width: "100%", marginBottom: 6 }}
-              />
-              <input
-                type="text"
-                value={creditsReason}
-                onChange={(e) => setCreditsReason(e.target.value)}
-                placeholder="Reason"
-                style={{ ...S.input, width: "100%", marginBottom: 8 }}
-              />
-              <button
-                onClick={handleAddCredits}
-                disabled={addingCredits}
-                style={{
-                  ...S.button,
-                  background: "#10B981",
-                  color: "white",
-                  width: "100%",
-                  opacity: addingCredits ? 0.6 : 1,
-                }}
-              >
-                {addingCredits ? "Adding..." : "Add Credits"}
+              <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#475569", marginBottom: 7 }}>Credit adjustment</label>
+              <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 8 }}>
+                <input type="number" step="1" value={creditsAmount} onChange={(event) => setCreditsAmount(event.target.value)} placeholder="+50 / -10" style={{ ...S.input, width: "100%" }} />
+                <input type="text" maxLength={240} value={creditsReason} onChange={(event) => setCreditsReason(event.target.value)} placeholder="Reason for this adjustment" style={{ ...S.input, width: "100%" }} />
+              </div>
+              <button type="button" onClick={handleAdjustCredits} disabled={saving} style={{ ...S.button, background: "#0F9F6E", color: "white", width: "100%", marginTop: 8, opacity: saving ? 0.55 : 1 }}>
+                {saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <CreditCard size={14} />}
+                Apply adjustment
               </button>
             </div>
           </div>
-
-          {error && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#DC2626",
-                background: "#FEE2E2",
-                padding: "8px 12px",
-                borderRadius: 6,
-                display: "flex",
-                gap: 6,
-                alignItems: "center",
-              }}
-            >
-              <AlertCircle size={14} /> {error}
-            </div>
-          )}
-          {success && (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#059669",
-                background: "#ECFDF5",
-                padding: "8px 12px",
-                borderRadius: 6,
-                display: "flex",
-                gap: 6,
-                alignItems: "center",
-              }}
-            >
-              <CheckCircle size={14} /> {success}
-            </div>
-          )}
+          {error && <div style={{ marginTop: 12, color: "#B91C1C", background: "#FEF2F2", borderRadius: 8, padding: "9px 11px", fontSize: 13, display: "flex", gap: 7, alignItems: "center" }}><AlertCircle size={14} /> {error}</div>}
+          {success && <div style={{ marginTop: 12, color: "#047857", background: "#ECFDF5", borderRadius: 8, padding: "9px 11px", fontSize: 13, display: "flex", gap: 7, alignItems: "center" }}><CheckCircle size={14} /> {success}</div>}
         </div>
       )}
     </div>
   );
 }
 
-type UserFilter = "all" | "admins";
+function SearchField({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <div style={{ position: "relative", flex: "1 1 300px" }}>
+      <Search size={16} style={{ position: "absolute", left: 12, top: 12, color: "#94A3B8" }} />
+      <input type="search" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} style={{ ...S.input, width: "100%", paddingLeft: 38 }} />
+    </div>
+  );
+}
 
-function UsersTab({ adminId, onRefresh, refreshTrigger }: { adminId: string; onRefresh: () => void; refreshTrigger: number }) {
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
+function UsersTab({ adminId, refreshTrigger, onRefresh }: { adminId: string; refreshTrigger: number; onRefresh: () => void }) {
+  const [data, setData] = useState<PagedResult<AdminUser>>(EMPTY_PAGE);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<UserFilter>("all");
-
-  useEffect(() => {
-    const loadUsers = async () => {
-      setLoading(true);
-      const result = await getAllUsers(adminId);
-      if (result.success) {
-        setUsers(result.data || []);
-      }
-      setLoading(false);
-    };
-    loadUsers();
-  }, [adminId, refreshTrigger]);
-
-   const filtered = users.filter((u) => {
-     const matchesSearch =
-       u.email.toLowerCase().includes(search.toLowerCase()) ||
-       (u.full_name || "").toLowerCase().includes(search.toLowerCase());
-     const matchesFilter = filter === "all" || (filter === "admins" && u.role === "admin");
-     return matchesSearch && matchesFilter;
-   });
-
-   return (
-     <div>
-       {/* Filter tabs */}
-       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-         <button
-           onClick={() => setFilter("all")}
-           style={{
-             ...S.button,
-             background: filter === "all" ? "#EFF6FF" : "#F3F4F6",
-             color: filter === "all" ? "#3B82F6" : "#64748B",
-             padding: "8px 16px",
-           }}
-         >
-           All Users ({users.length})
-         </button>
-         <button
-           onClick={() => setFilter("admins")}
-           style={{
-             ...S.button,
-             background: filter === "admins" ? "#FEE2E2" : "#F3F4F6",
-             color: filter === "admins" ? "#DC2626" : "#64748B",
-             padding: "8px 16px",
-           }}
-         >
-           Admins Only ({users.filter((u) => u.role === "admin").length})
-         </button>
-       </div>
-
-       <div style={{ marginBottom: 16 }}>
-        <input
-          type="text"
-          placeholder="Search by email or name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            ...S.input,
-            width: "100%",
-            paddingLeft: 36,
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E")`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "8px center",
-          }}
-        />
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#94A3B8" }}>
-          <Loader2 size={24} style={{ animation: "spin 1s linear infinite", margin: "0 auto" }} />
-          <div style={{ marginTop: 12 }}>Loading users...</div>
-        </div>
-      ) : (
-        <div>
-          <div style={{ fontSize: 13, color: "#64748B", marginBottom: 12 }}>
-            {filtered.length} user{filtered.length !== 1 ? "s" : ""}
-          </div>
-          {filtered.map((user) => (
-            <UserRow key={user.id} user={user} adminId={adminId} onRefresh={onRefresh} />
-          ))}
-        </div>
-      )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
-}
-
-// ─── Audit Logs Tab ────────────────────────────────────────────────────────────
-
-function AuditTab({ adminId }: { adminId: string }) {
-  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [role, setRole] = useState<UserRoleFilter>("all");
+  const [plan, setPlan] = useState<UserPlanFilter>("all");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadLogs = async () => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
       setLoading(true);
-      const result = await getAuditLogs(adminId, 100);
-      if (result.success) {
-        setLogs(result.data || []);
-      }
+      setError("");
+      const result = await getAllUsers(adminId, { page, pageSize: 20, search, role, plan });
+      if (cancelled) return;
+      if (result.success && result.data) setData(result.data);
+      else setError(result.error || "Could not load users");
       setLoading(false);
     };
-    loadLogs();
-  }, [adminId]);
+    void load();
+    return () => { cancelled = true; };
+  }, [adminId, page, search, role, plan, refreshTrigger]);
 
   return (
-    <div>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: "40px", color: "#94A3B8" }}>
-          <Loader2 size={24} style={{ animation: "spin 1s linear infinite", margin: "0 auto" }} />
-          <div style={{ marginTop: 12 }}>Loading audit logs...</div>
-        </div>
-      ) : (
-        <div>
-          {logs.length === 0 ? (
-            <div style={{ ...S.card, textAlign: "center", color: "#94A3B8" }}>
-              No audit logs yet.
-            </div>
-          ) : (
-            logs.map((log) => (
-              <div key={log.id} style={S.card}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B" }}>
-                      {log.action}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#64748B", marginTop: 4 }}>
-                      {new Date(log.created_at).toLocaleString()}
-                    </div>
-                    {log.target_user_id && (
-                      <div style={{ fontSize: 12, color: "#475569", marginTop: 2 }}>
-                        Target: <code style={{ background: "#F3F4F6", padding: "2px 6px", borderRadius: 4 }}>
-                          {log.target_user_id.slice(0, 8)}...
-                        </code>
-                      </div>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 11,
-                      background: "#F3F4F6",
-                      color: "#475569",
-                      padding: "4px 8px",
-                      borderRadius: 4,
-                      maxWidth: 200,
-                      overflow: "auto",
-                    }}
-                  >
-                    <code>{JSON.stringify(log.details).slice(0, 100)}</code>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+    <section>
+      <div style={{ ...S.card, padding: 14, display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+        <SearchField value={searchInput} onChange={setSearchInput} placeholder="Search users by email or name" />
+        <select value={role} onChange={(event) => { setRole(event.target.value as UserRoleFilter); setPage(1); }} style={{ ...S.input, minWidth: 135 }}>
+          <option value="all">All roles</option>
+          <option value="user">Users</option>
+          <option value="admin">Admins</option>
+        </select>
+        <select value={plan} onChange={(event) => { setPlan(event.target.value as UserPlanFilter); setPage(1); }} style={{ ...S.input, minWidth: 140 }}>
+          <option value="all">All plans</option>
+          <option value="trial">Trial</option>
+          <option value="free">Free</option>
+          <option value="pro">Pro</option>
+          <option value="studio">Studio</option>
+        </select>
+      </div>
+      <ErrorBanner message={error} />
+      {loading ? <LoadingState label="Loading users..." /> : data.items.length === 0 ? <EmptyState title="No users found" description="Try a different search or filter." /> : (
+        <>
+          <div style={{ fontSize: 13, color: "#64748B", marginBottom: 12 }}>{data.total} matching user{data.total === 1 ? "" : "s"}</div>
+          {data.items.map((item) => <UserRow key={item.id} user={item} adminId={adminId} onRefresh={onRefresh} />)}
+          <Pagination data={data} onPageChange={setPage} />
+        </>
       )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+    </section>
   );
 }
 
-// ─── Main Admin Page ──────────────────────────────────────────────────────────
+function PaymentsTab({ adminId, refreshTrigger }: { adminId: string; refreshTrigger: number }) {
+  const [data, setData] = useState<PagedResult<AdminPayment>>(EMPTY_PAGE);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<PaymentStatusFilter>("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setSearch(searchInput.trim());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      const result = await getPayments(adminId, { page, pageSize: 20, search, status });
+      if (cancelled) return;
+      if (result.success && result.data) setData(result.data);
+      else setError(result.error || "Could not load payments");
+      setLoading(false);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [adminId, page, search, status, refreshTrigger]);
+
+  return (
+    <section>
+      <div style={{ ...S.card, padding: 14, display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+        <SearchField value={searchInput} onChange={setSearchInput} placeholder="Search by customer email, name, or order code" />
+        <select value={status} onChange={(event) => { setStatus(event.target.value as PaymentStatusFilter); setPage(1); }} style={{ ...S.input, minWidth: 165 }}>
+          <option value="all">All statuses</option>
+          <option value="paid">Paid</option>
+          <option value="pending">Pending</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="expired">Expired</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+      <ErrorBanner message={error} />
+      {loading ? <LoadingState label="Loading payments..." /> : data.items.length === 0 ? <EmptyState title="No payments found" description="Payment orders will appear here as users start checkout." /> : (
+        <>
+          <div style={{ ...S.card, overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+                <thead>
+                  <tr style={{ background: "#F8FAFC", borderBottom: "1px solid #E2E8F0" }}>
+                    {['Order', 'Customer', 'Plan', 'Amount', 'Status', 'Created / paid', 'Subscription'].map((heading) => (
+                      <th key={heading} style={{ textAlign: "left", padding: "12px 14px", color: "#64748B", fontSize: 11, textTransform: "uppercase", letterSpacing: ".04em" }}>{heading}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.items.map((payment) => (
+                    <tr key={payment.id} style={{ borderBottom: "1px solid #EEF2F7" }}>
+                      <td style={{ padding: 14, verticalAlign: "top" }}>
+                        <div style={{ color: "#0F172A", fontSize: 13, fontWeight: 800 }}>#{payment.order_code}</div>
+                        <div style={{ color: "#94A3B8", fontSize: 11, marginTop: 4 }}>{payment.provider || "payOS"}</div>
+                      </td>
+                      <td style={{ padding: 14, verticalAlign: "top", maxWidth: 240 }}>
+                        <div style={{ color: "#334155", fontSize: 13, fontWeight: 700 }}>{payment.customer_name || "Unnamed user"}</div>
+                        <div style={{ color: "#64748B", fontSize: 12, marginTop: 4, overflowWrap: "anywhere" }}>{payment.customer_email}</div>
+                      </td>
+                      <td style={{ padding: 14, verticalAlign: "top" }}><StatusBadge value={payment.plan_code} /></td>
+                      <td style={{ padding: 14, verticalAlign: "top", color: "#0F172A", fontSize: 13, fontWeight: 800, whiteSpace: "nowrap" }}>{formatVnd(payment.amount_vnd)}</td>
+                      <td style={{ padding: 14, verticalAlign: "top" }}>
+                        <StatusBadge value={payment.status} />
+                        {payment.error_message && <div title={payment.error_message} style={{ color: "#B91C1C", fontSize: 11, marginTop: 6, maxWidth: 150, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{payment.error_message}</div>}
+                      </td>
+                      <td style={{ padding: 14, verticalAlign: "top", fontSize: 12, color: "#64748B", whiteSpace: "nowrap" }}>
+                        <div>{formatDateTime(payment.created_at)}</div>
+                        <div style={{ color: payment.paid_at ? "#047857" : "#94A3B8", marginTop: 5 }}>{payment.paid_at ? `Paid ${formatDateTime(payment.paid_at)}` : "Not paid"}</div>
+                      </td>
+                      <td style={{ padding: 14, verticalAlign: "top", fontSize: 12, color: "#64748B", whiteSpace: "nowrap" }}>
+                        <StatusBadge value={payment.subscription_status} />
+                        <div style={{ marginTop: 6 }}>Until {formatDate(payment.subscription_period_end)}</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Pagination data={data} onPageChange={setPage} />
+        </>
+      )}
+    </section>
+  );
+}
+
+function AuditTab({ adminId, refreshTrigger }: { adminId: string; refreshTrigger: number }) {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      const result = await getAuditLogs(adminId, 100);
+      if (cancelled) return;
+      if (result.success) setLogs(result.data || []);
+      else setError(result.error || "Could not load audit logs");
+      setLoading(false);
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [adminId, refreshTrigger]);
+
+  if (loading) return <LoadingState label="Loading audit logs..." />;
+  return (
+    <section>
+      <ErrorBanner message={error} />
+      {logs.length === 0 ? <EmptyState title="No audit events yet" description="Admin changes will be recorded here." /> : logs.map((log) => (
+        <div key={log.id} style={{ ...S.card, padding: 16, marginBottom: 10, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
+          <div>
+            <div style={{ color: "#0F172A", fontSize: 13, fontWeight: 800 }}>{log.action.replaceAll("_", " ")}</div>
+            <div style={{ color: "#94A3B8", fontSize: 12, marginTop: 5 }}>{formatDateTime(log.created_at)}</div>
+            {log.target_user_id && <div style={{ color: "#64748B", fontSize: 12, marginTop: 5 }}>Target: <code>{log.target_user_id}</code></div>}
+          </div>
+          <code style={{ alignSelf: "flex-start", maxWidth: 420, overflow: "hidden", textOverflow: "ellipsis", color: "#475569", background: "#F8FAFC", border: "1px solid #E2E8F0", padding: "7px 9px", borderRadius: 7, fontSize: 11 }}>{JSON.stringify(log.details)}</code>
+        </div>
+      ))}
+    </section>
+  );
+}
 
 export function AdminPage() {
   const { user, signOut } = useAuth();
@@ -472,225 +599,59 @@ export function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>("users");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Check admin access
   useEffect(() => {
-    if (!user) {
-      navigate("/signin");
-    } else if (user.role !== 'admin') {
-      console.warn('[AdminPage] Non-admin user attempted access:', user.email);
-      navigate("/projects");
-    }
+    if (!user) navigate("/signin");
+    else if (user.role !== "admin") navigate("/projects");
   }, [user, navigate]);
 
-  if (!user || user.role !== 'admin') return null;
+  if (!user || user.role !== "admin") return null;
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/signin");
   };
 
-  const tabs: { id: AdminTab; label: string; icon: React.ElementType }[] = [
+  const tabs: { id: AdminTab; label: string; icon: ElementType }[] = [
     { id: "users", label: "Users", icon: Users },
-    { id: "credits", label: "Credits", icon: CreditCard },
-    { id: "audit", label: "Audit Logs", icon: AlertCircle },
+    { id: "payments", label: "Payments", icon: CreditCard },
+    { id: "audit", label: "Audit logs", icon: ShieldCheck },
   ];
 
-  // Dashboard stats component
-  const DashboardStats = () => {
-    const [totalUsers, setTotalUsers] = useState<number | null>(null);
-    const [totalCredits, setTotalCredits] = useState<number | null>(null);
-    const [activeUsers, setActiveUsers] = useState<number | null>(null);
-    const [processingFrames, setProcessingFrames] = useState<number | null>(null);
-    const [estimatedCostUsd, setEstimatedCostUsd] = useState<number | null>(null);
-    const [statsLoading, setStatsLoading] = useState(true);
-
-    useEffect(() => {
-      const loadStats = async () => {
-        setStatsLoading(true);
-        const metricsResult = await getOperationalMetrics(user.id);
-        if (metricsResult.success && metricsResult.data) {
-          setTotalUsers(metricsResult.data.totalUsers);
-          setTotalCredits(metricsResult.data.totalCredits);
-          setActiveUsers(metricsResult.data.activeUsers);
-          setProcessingFrames(metricsResult.data.processingFrames);
-          setEstimatedCostUsd(metricsResult.data.estimatedCostUsd);
-        }
-        setStatsLoading(false);
-      };
-      loadStats();
-    }, [user.id, refreshTrigger]);
-
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 16, marginBottom: 32 }}>
-        <div style={{ ...S.card, marginBottom: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
-            Total Users
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#1E293B" }}>
-            {statsLoading ? "—" : totalUsers}
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>
-            {statsLoading ? "Loading..." : ""}
-          </div>
-        </div>
-        <div style={{ ...S.card, marginBottom: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
-            Available Creative Credits
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#10B981" }}>
-            {statsLoading ? "—" : totalCredits}
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Current active usage periods</div>
-        </div>
-        <div style={{ ...S.card, marginBottom: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
-            Active This Month
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#3B82F6" }}>
-            {statsLoading ? "—" : activeUsers}
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Last 30 days</div>
-        </div>
-        <div style={{ ...S.card, marginBottom: 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#64748B", marginBottom: 8 }}>
-            30-day Processing Cost
-          </div>
-          <div style={{ fontSize: 25, fontWeight: 700, color: "#8B5CF6" }}>
-            {statsLoading ? "—" : `$${(estimatedCostUsd || 0).toFixed(2)}`}
-          </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>{processingFrames || 0} metered frames</div>
-        </div>
-      </div>
-    );
-  };
-
-  // Credits management component
-  const CreditsTab = () => {
-    return (
-      <div>
-        <div style={S.card}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B", marginBottom: 12 }}>
-            Credits System
-          </div>
-          <div style={{ fontSize: 13, color: "#64748B", lineHeight: "1.6" }}>
-            Manage user credits directly from the <strong>Users</strong> tab. Click the edit button on any user card to:
-          </div>
-          <ul style={{ fontSize: 13, color: "#64748B", marginTop: 12, paddingLeft: 20, lineHeight: "1.7" }}>
-            <li>Add credits with a reason/memo</li>
-            <li>Track credit history via audit logs</li>
-            <li>Adjust subscription plans per user</li>
-          </ul>
-          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 16, padding: "12px", background: "#F0F9FF", borderRadius: 8, borderLeft: "3px solid #3B82F6" }}>
-            💡 Use the "Reason" field to document why credits were added (e.g., "Promotional bonus", "Bug compensation")
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#F4F8FF",
-        fontFamily: "'DM Sans', 'Inter', sans-serif",
-      }}
-    >
-      {/* Top bar */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 40,
-          background: "rgba(255,255,255,0.9)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid #E8EFFE",
-          height: 60,
-          display: "flex",
-          alignItems: "center",
-          padding: "0 32px",
-          justifyContent: "space-between",
-        }}
-      >
-        <button
-          onClick={() => navigate("/projects")}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            color: "#64748B",
-            fontSize: 14,
-            fontWeight: 600,
-          }}
-        >
-          <ArrowLeft size={16} /> Back to projects
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ minHeight: "100vh", background: "#F4F7FB", fontFamily: "'DM Sans', 'Inter', sans-serif", color: "#0F172A" }}>
+      <header style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(255,255,255,.94)", backdropFilter: "blur(14px)", borderBottom: "1px solid #E2E8F0", minHeight: 64, display: "flex", alignItems: "center", padding: "10px clamp(16px, 4vw, 36px)", justifyContent: "space-between", gap: 14 }}>
+        <button type="button" onClick={() => navigate("/projects")} style={{ ...S.button, background: "transparent", color: "#64748B", paddingLeft: 0 }}><ArrowLeft size={16} /> Projects</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandLogo height={31} />
-          <span style={{ padding: "4px 8px", borderRadius: 999, background: "#FEE2E2", color: "#B91C1C", fontWeight: 800, fontSize: 11 }}>ADMIN</span>
+          <span style={{ padding: "4px 8px", borderRadius: 999, background: "#EDE9FE", color: "#6D28D9", border: "1px solid #DDD6FE", fontWeight: 900, fontSize: 10 }}>ADMIN</span>
         </div>
-        <button
-          onClick={handleSignOut}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            background: "none",
-            border: "1px solid #E2E8F0",
-            borderRadius: 8,
-            cursor: "pointer",
-            color: "#64748B",
-            fontSize: 13,
-            padding: "6px 12px",
-          }}
-        >
-          <LogOut size={13} /> Sign out
-        </button>
-      </div>
+        <button type="button" onClick={handleSignOut} style={{ ...S.button, background: "white", color: "#64748B", border: "1px solid #CBD5E1" }}><LogOut size={14} /> Sign out</button>
+      </header>
 
-      {/* Content */}
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px" }}>
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 32, borderBottom: "1px solid #E8EFFE", paddingBottom: 16 }}>
+      <main style={{ maxWidth: 1320, margin: "0 auto", padding: "32px clamp(16px, 3vw, 28px) 56px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 16, marginBottom: 24 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}><ShieldCheck size={22} color="#6D28D9" /><h1 style={{ margin: 0, fontSize: 24, letterSpacing: "-.02em" }}>Admin Console</h1></div>
+            <p style={{ margin: "7px 0 0", color: "#64748B", fontSize: 13 }}>Monitor users, payments, subscriptions, usage and administrative changes.</p>
+          </div>
+          <button type="button" onClick={() => setRefreshTrigger((value) => value + 1)} style={{ ...S.button, background: "white", color: "#475569", border: "1px solid #CBD5E1" }}><RefreshCw size={14} /> Refresh data</button>
+        </div>
+
+        <DashboardStats adminId={user.id} refreshTrigger={refreshTrigger} />
+
+        <nav style={{ ...S.card, padding: 6, display: "inline-flex", flexWrap: "wrap", gap: 4, marginBottom: 18 }}>
           {tabs.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 16px",
-                borderRadius: 8,
-                border: "none",
-                background: activeTab === id ? "#EFF6FF" : "transparent",
-                color: activeTab === id ? "#3B82F6" : "#64748B",
-                cursor: "pointer",
-                fontSize: 14,
-                fontWeight: activeTab === id ? 600 : 500,
-              }}
-            >
-              <Icon size={16} /> {label}
+            <button key={id} type="button" onClick={() => setActiveTab(id)} style={{ ...S.button, minWidth: 110, background: activeTab === id ? "#EDE9FE" : "transparent", color: activeTab === id ? "#6D28D9" : "#64748B" }}>
+              <Icon size={15} /> {label}
             </button>
           ))}
-        </div>
+        </nav>
 
-        {/* Content */}
-        <DashboardStats />
-        
-        {activeTab === "users" && (
-          <UsersTab
-            adminId={user.id}
-            onRefresh={() => setRefreshTrigger((t) => t + 1)}
-            refreshTrigger={refreshTrigger}
-          />
-        )}
-        {activeTab === "credits" && <CreditsTab />}
-        {activeTab === "audit" && <AuditTab adminId={user.id} />}
-      </div>
+        {activeTab === "users" && <UsersTab adminId={user.id} refreshTrigger={refreshTrigger} onRefresh={() => setRefreshTrigger((value) => value + 1)} />}
+        {activeTab === "payments" && <PaymentsTab adminId={user.id} refreshTrigger={refreshTrigger} />}
+        {activeTab === "audit" && <AuditTab adminId={user.id} refreshTrigger={refreshTrigger} />}
+      </main>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #8B5CF6 !important; outline-offset: 2px; }`}</style>
     </div>
   );
 }
